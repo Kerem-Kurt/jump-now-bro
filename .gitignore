@@ -20,6 +20,7 @@
 
 # Editor caches
 .vs/
+.vscode/
 .gradle/
 .idea/
 
@@ -30,6 +31,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
