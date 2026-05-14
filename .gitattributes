@@ -1,0 +1,64 @@
+# Git LFS configuration for Unity binary assets.
+# Anything matched by these filters gets stored in LFS instead of regular git,
+# keeping repo size manageable.
+
+# === Unity binary asset types (force binary, no diff) ===
+*.unity        -text merge=unityyamlmerge
+*.prefab       -text merge=unityyamlmerge
+*.asset        -text merge=unityyamlmerge
+*.mat          -text merge=unityyamlmerge
+*.anim         -text merge=unityyamlmerge
+*.controller   -text merge=unityyamlmerge
+*.physicMaterial -text merge=unityyamlmerge
+*.physicsMaterial2D -text merge=unityyamlmerge
+*.lighting     -text merge=unityyamlmerge
+*.cubemap      -text
+*.unitypackage -text
+*.mesh         -text
+
+# === 2D images and sprites ===
+*.png  filter=lfs diff=lfs merge=lfs -text
+*.jpg  filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.psd  filter=lfs diff=lfs merge=lfs -text
+*.ai   filter=lfs diff=lfs merge=lfs -text
+*.tga  filter=lfs diff=lfs merge=lfs -text
+*.tif  filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.gif  filter=lfs diff=lfs merge=lfs -text
+*.bmp  filter=lfs diff=lfs merge=lfs -text
+*.aseprite filter=lfs diff=lfs merge=lfs -text
+*.ase  filter=lfs diff=lfs merge=lfs -text
+
+# === 3D models (just in case) ===
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.obj   filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.dae   filter=lfs diff=lfs merge=lfs -text
+*.3ds   filter=lfs diff=lfs merge=lfs -text
+
+# === Audio ===
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+*.aif filter=lfs diff=lfs merge=lfs -text
+*.aiff filter=lfs diff=lfs merge=lfs -text
+
+# === Video ===
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+*.webm filter=lfs diff=lfs merge=lfs -text
+
+# === Fonts ===
+*.ttf filter=lfs diff=lfs merge=lfs -text
+*.otf filter=lfs diff=lfs merge=lfs -text
+
+# === Archives ===
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.7z  filter=lfs diff=lfs merge=lfs -text
+
+# === Misc binary ===
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.so  filter=lfs diff=lfs merge=lfs -text
+*.dylib filter=lfs diff=lfs merge=lfs -text
+*.pdb filter=lfs diff=lfs merge=lfs -text

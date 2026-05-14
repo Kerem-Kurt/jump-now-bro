@@ -1,0 +1,67 @@
+# Unity generated folders and files — based on the standard Unity gitignore
+# https://github.com/github/gitignore/blob/main/Unity.gitignore
+
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# MemoryCaptures can get huge and may contain sensitive data
+/[Mm]emory[Cc]aptures/
+
+# Recordings can get huge
+/[Rr]ecordings/
+
+# Asset meta files are committed; auto-generated JetBrains plugin folder is not
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Editor caches
+.vs/
+.gradle/
+.idea/
+
+# Auto-generated VS / Rider / MD / Consulo project files
+# (Unity regenerates these on demand via "Regenerate project files")
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity-generated meta files for the above
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Crash reports
+sysinfo.txt
+
+# Build artifacts
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Addressables packed bins
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+
+# Streaming assets aa (Addressables runtime)
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# macOS
+.DS_Store
