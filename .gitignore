@@ -67,3 +67,10 @@ sysinfo.txt
 
 # macOS
 .DS_Store
+
+# Local-only design notes
+DESIGN.md
+
+# Personal Claude Code instructions (private)
+CLAUDE.local.md
+.claude/
