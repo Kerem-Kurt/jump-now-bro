@@ -20,6 +20,9 @@ namespace JumpNowBro.Gameplay
         bool wasJumpHeld;
         float coyoteTimer;
         float jumpBufferTimer;
+        float dashTimer;
+        bool dashChargeAvailable = true;
+        int facing = 1;
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
@@ -40,19 +43,24 @@ namespace JumpNowBro.Gameplay
             float dt = Time.fixedDeltaTime;
             coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
             jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - dt);
+            dashTimer = Mathf.Max(0f, dashTimer - dt);
 
             bool grounded = IsGrounded();
             bool jumpPressed = p1.JumpPressed;
             bool jumpHeld = p1.JumpHeld;
+            bool dashPressed = p1.DashPressed;
+
+            int dir = (p1.MoveRight ? 1 : 0) - (p1.MoveLeft ? 1 : 0);
+            if (dir != 0) facing = dir;
 
             if (jumpPressed) jumpBufferTimer = tuning.jumpBufferTime;
-
             bool jumpAllowed = InputForgiveness.CanJump(coyoteTimer, jumpBufferTimer, grounded, jumpPressed);
 
             switch (state)
             {
                 case MoveState.Grounded:
-                    if (jumpAllowed) FireJump();
+                    if (dashPressed && dashChargeAvailable) FireDash();
+                    else if (jumpAllowed) FireJump();
                     else if (!grounded)
                     {
                         state = MoveState.Falling;
@@ -60,23 +68,37 @@ namespace JumpNowBro.Gameplay
                     }
                     break;
                 case MoveState.Jumping:
-                    if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld) ApplyJumpCut();
-                    if (rb.linearVelocity.y <= 0f) state = MoveState.Falling;
+                    if (dashPressed && dashChargeAvailable) FireDash();
+                    else
+                    {
+                        if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld) ApplyJumpCut();
+                        if (rb.linearVelocity.y <= 0f) state = MoveState.Falling;
+                    }
                     break;
                 case MoveState.Falling:
-                    if (jumpAllowed) FireJump();
-                    else if (grounded) state = MoveState.Grounded;
+                    if (dashPressed && dashChargeAvailable) FireDash();
+                    else if (jumpAllowed) FireJump();
+                    else if (grounded)
+                    {
+                        state = MoveState.Grounded;
+                        dashChargeAvailable = true;
+                    }
+                    break;
+                case MoveState.Dashing:
+                    if (dashTimer <= 0f) state = MoveState.Falling;
                     break;
             }
 
-            int dir = (p1.MoveRight ? 1 : 0) - (p1.MoveLeft ? 1 : 0);
-            float speedMul = (state == MoveState.Grounded) ? 1f : tuning.airControlMultiplier;
-            float targetVx = dir * tuning.runSpeed * speedMul;
+            if (state != MoveState.Dashing)
+            {
+                float speedMul = (state == MoveState.Grounded) ? 1f : tuning.airControlMultiplier;
+                float targetVx = dir * tuning.runSpeed * speedMul;
 
-            Vector2 vel = rb.linearVelocity;
-            vel.x = targetVx;
-            vel.y -= tuning.gravity * dt;
-            rb.linearVelocity = vel;
+                Vector2 vel = rb.linearVelocity;
+                vel.x = targetVx;
+                vel.y -= tuning.gravity * dt;
+                rb.linearVelocity = vel;
+            }
 
             wasJumpHeld = jumpHeld;
             p1.Tick();
@@ -98,6 +120,15 @@ namespace JumpNowBro.Gameplay
             var v = rb.linearVelocity;
             v.y *= tuning.variableJumpCutMultiplier;
             rb.linearVelocity = v;
+        }
+
+        void FireDash()
+        {
+            float dashSpeed = tuning.dashDistance / tuning.dashDuration;
+            rb.linearVelocity = new Vector2(facing * dashSpeed, 0f);
+            state = MoveState.Dashing;
+            dashTimer = tuning.dashDuration;
+            dashChargeAvailable = false;
         }
 
         bool IsGrounded()
