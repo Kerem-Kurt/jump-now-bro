@@ -18,6 +18,8 @@ namespace JumpNowBro.Gameplay
         IInputSource p2;
         MoveState state;
         bool wasJumpHeld;
+        float coyoteTimer;
+        float jumpBufferTimer;
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
@@ -35,23 +37,35 @@ namespace JumpNowBro.Gameplay
         {
             if (p1 == null || p2 == null || tuning == null) return;
 
+            float dt = Time.fixedDeltaTime;
+            coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
+            jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - dt);
+
             bool grounded = IsGrounded();
             bool jumpPressed = p1.JumpPressed;
             bool jumpHeld = p1.JumpHeld;
 
+            if (jumpPressed) jumpBufferTimer = tuning.jumpBufferTime;
+
+            bool jumpAllowed = InputForgiveness.CanJump(coyoteTimer, jumpBufferTimer, grounded, jumpPressed);
+
             switch (state)
             {
                 case MoveState.Grounded:
-                    if (jumpPressed) { Jump(); state = MoveState.Jumping; }
-                    else if (!grounded) state = MoveState.Falling;
+                    if (jumpAllowed) FireJump();
+                    else if (!grounded)
+                    {
+                        state = MoveState.Falling;
+                        coyoteTimer = tuning.coyoteTime;
+                    }
                     break;
                 case MoveState.Jumping:
-                    if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld)
-                        ApplyJumpCut();
+                    if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld) ApplyJumpCut();
                     if (rb.linearVelocity.y <= 0f) state = MoveState.Falling;
                     break;
                 case MoveState.Falling:
-                    if (grounded) state = MoveState.Grounded;
+                    if (jumpAllowed) FireJump();
+                    else if (grounded) state = MoveState.Grounded;
                     break;
             }
 
@@ -61,7 +75,7 @@ namespace JumpNowBro.Gameplay
 
             Vector2 vel = rb.linearVelocity;
             vel.x = targetVx;
-            vel.y -= tuning.gravity * Time.fixedDeltaTime;
+            vel.y -= tuning.gravity * dt;
             rb.linearVelocity = vel;
 
             wasJumpHeld = jumpHeld;
@@ -69,11 +83,14 @@ namespace JumpNowBro.Gameplay
             p2.Tick();
         }
 
-        void Jump()
+        void FireJump()
         {
             var v = rb.linearVelocity;
             v.y = tuning.jumpVelocity;
             rb.linearVelocity = v;
+            state = MoveState.Jumping;
+            jumpBufferTimer = 0f;
+            coyoteTimer = 0f;
         }
 
         void ApplyJumpCut()
