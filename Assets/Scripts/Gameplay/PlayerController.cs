@@ -17,6 +17,7 @@ namespace JumpNowBro.Gameplay
         IInputSource p1;
         IInputSource p2;
         MoveState state;
+        bool wasJumpHeld;
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
@@ -35,19 +36,51 @@ namespace JumpNowBro.Gameplay
             if (p1 == null || p2 == null || tuning == null) return;
 
             bool grounded = IsGrounded();
-            state = grounded ? MoveState.Grounded : MoveState.Falling;
+            bool jumpPressed = p1.JumpPressed;
+            bool jumpHeld = p1.JumpHeld;
+
+            switch (state)
+            {
+                case MoveState.Grounded:
+                    if (jumpPressed) { Jump(); state = MoveState.Jumping; }
+                    else if (!grounded) state = MoveState.Falling;
+                    break;
+                case MoveState.Jumping:
+                    if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld)
+                        ApplyJumpCut();
+                    if (rb.linearVelocity.y <= 0f) state = MoveState.Falling;
+                    break;
+                case MoveState.Falling:
+                    if (grounded) state = MoveState.Grounded;
+                    break;
+            }
 
             int dir = (p1.MoveRight ? 1 : 0) - (p1.MoveLeft ? 1 : 0);
-            float speedMul = grounded ? 1f : tuning.airControlMultiplier;
+            float speedMul = (state == MoveState.Grounded) ? 1f : tuning.airControlMultiplier;
             float targetVx = dir * tuning.runSpeed * speedMul;
 
-            Vector2 v = rb.linearVelocity;
-            v.x = targetVx;
-            v.y -= tuning.gravity * Time.fixedDeltaTime;
-            rb.linearVelocity = v;
+            Vector2 vel = rb.linearVelocity;
+            vel.x = targetVx;
+            vel.y -= tuning.gravity * Time.fixedDeltaTime;
+            rb.linearVelocity = vel;
 
+            wasJumpHeld = jumpHeld;
             p1.Tick();
             p2.Tick();
+        }
+
+        void Jump()
+        {
+            var v = rb.linearVelocity;
+            v.y = tuning.jumpVelocity;
+            rb.linearVelocity = v;
+        }
+
+        void ApplyJumpCut()
+        {
+            var v = rb.linearVelocity;
+            v.y *= tuning.variableJumpCutMultiplier;
+            rb.linearVelocity = v;
         }
 
         bool IsGrounded()
