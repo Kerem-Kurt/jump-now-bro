@@ -1,0 +1,36 @@
+name: Feature / Refactor / Polish / Test
+description: A unit of implementation work tracked against a milestone.
+title: "<type>(<scope>): <short summary>"
+labels: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What this issue covers and why. One or two paragraphs is plenty.
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, verifiable checks. Each item should be a checkable bullet.
+      placeholder: |
+        - [ ] Behavior X observable in editor
+        - [ ] Files touched: ...
+        - [ ] Phase 2 implication preserved (if any)
+    validations:
+      required: true
+  - type: input
+    id: design_ref
+    attributes:
+      label: DESIGN.md reference (optional)
+      description: Section of DESIGN.md most relevant to this issue (e.g. "§4 Movement").
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / open questions
+    validations:
+      required: false
