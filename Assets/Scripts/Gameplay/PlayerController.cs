@@ -21,8 +21,12 @@ namespace JumpNowBro.Gameplay
         float coyoteTimer;
         float jumpBufferTimer;
         float dashTimer;
+        float freezeTimer;
+        float invulnTimer;
         bool dashChargeAvailable = true;
         int facing = 1;
+
+        public bool IsInvulnerable => invulnTimer > 0f;
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
@@ -43,7 +47,7 @@ namespace JumpNowBro.Gameplay
             float dt = Time.fixedDeltaTime;
             coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
             jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - dt);
-            dashTimer = Mathf.Max(0f, dashTimer - dt);
+            invulnTimer = Mathf.Max(0f, invulnTimer - dt);
 
             bool grounded = IsGrounded();
             bool jumpPressed = p1.JumpPressed;
@@ -85,7 +89,21 @@ namespace JumpNowBro.Gameplay
                     }
                     break;
                 case MoveState.Dashing:
-                    if (dashTimer <= 0f) state = MoveState.Falling;
+                    if (freezeTimer > 0f)
+                    {
+                        rb.linearVelocity = Vector2.zero;
+                        freezeTimer = Mathf.Max(0f, freezeTimer - dt);
+                        if (freezeTimer <= 0f)
+                        {
+                            float dashSpeed = tuning.dashDistance / tuning.dashDuration;
+                            rb.linearVelocity = new Vector2(facing * dashSpeed, 0f);
+                        }
+                    }
+                    else
+                    {
+                        dashTimer = Mathf.Max(0f, dashTimer - dt);
+                        if (dashTimer <= 0f) state = MoveState.Falling;
+                    }
                     break;
             }
 
@@ -124,11 +142,12 @@ namespace JumpNowBro.Gameplay
 
         void FireDash()
         {
-            float dashSpeed = tuning.dashDistance / tuning.dashDuration;
-            rb.linearVelocity = new Vector2(facing * dashSpeed, 0f);
             state = MoveState.Dashing;
+            freezeTimer = tuning.dashFreezeFrameDuration;
             dashTimer = tuning.dashDuration;
+            invulnTimer = tuning.dashInvulnerabilityDuration;
             dashChargeAvailable = false;
+            rb.linearVelocity = Vector2.zero;
         }
 
         bool IsGrounded()
