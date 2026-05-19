@@ -25,8 +25,12 @@ namespace JumpNowBro.Gameplay
         float invulnTimer;
         bool dashChargeAvailable = true;
         int facing = 1;
+        Vector2 checkpointPosition;
 
         public bool IsInvulnerable => invulnTimer > 0f;
+        public Vector2 CheckpointPosition => checkpointPosition;
+
+        public void SetCheckpoint(Vector2 pos) => checkpointPosition = pos;
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
