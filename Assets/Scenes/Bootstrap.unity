@@ -582,7 +582,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.LevelManager
   levelSceneNames:
-  - level_01
+  - Level_01
   loadFirstOnStart: 1
 --- !u!1 &1591425169
 GameObject:
