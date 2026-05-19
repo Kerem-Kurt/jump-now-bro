@@ -10,6 +10,7 @@ namespace JumpNowBro.Gameplay
         public static LevelManager Instance { get; private set; }
 
         [SerializeField] string[] levelSceneNames;
+        [SerializeField] bool loadFirstOnStart = true;
         int currentLevelIndex = -1;
         string currentlyLoadedScene;
 
@@ -29,6 +30,11 @@ namespace JumpNowBro.Gameplay
             }
             Instance = this;
             DontDestroyOnLoad(gameObject);
+        }
+
+        void Start()
+        {
+            if (loadFirstOnStart) LoadFirst();
         }
 
         public void LoadFirst()
