@@ -50,11 +50,19 @@ namespace JumpNowBro.Gameplay
             invulnTimer = Mathf.Max(0f, invulnTimer - dt);
 
             bool grounded = IsGrounded();
-            bool jumpPressed = p1.JumpPressed;
-            bool jumpHeld = p1.JumpHeld;
-            bool dashPressed = p1.DashPressed;
 
-            int dir = (p1.MoveRight ? 1 : 0) - (p1.MoveLeft ? 1 : 0);
+            ControlMap controlMap = ControlMapStore.Instance != null
+                ? ControlMapStore.Instance.Current
+                : ControlMap.Default;
+            IInputSource moveSrc = controlMap.moveOwner == InputOwner.P1 ? p1 : p2;
+            IInputSource jumpSrc = controlMap.jumpOwner == InputOwner.P1 ? p1 : p2;
+            IInputSource dashSrc = controlMap.dashOwner == InputOwner.P1 ? p1 : p2;
+
+            bool jumpPressed = jumpSrc.JumpPressed;
+            bool jumpHeld = jumpSrc.JumpHeld;
+            bool dashPressed = dashSrc.DashPressed;
+
+            int dir = (moveSrc.MoveRight ? 1 : 0) - (moveSrc.MoveLeft ? 1 : 0);
             if (dir != 0) facing = dir;
 
             if (jumpPressed) jumpBufferTimer = tuning.jumpBufferTime;
