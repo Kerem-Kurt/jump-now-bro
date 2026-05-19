@@ -6,6 +6,7 @@ namespace JumpNowBro.Gameplay
     public class PlayerSpawner : MonoBehaviour
     {
         [SerializeField] GameObject playerPrefab;
+        [SerializeField] CameraFollow cameraFollow;
 
         PlayerController currentPlayer;
 
@@ -32,6 +33,9 @@ namespace JumpNowBro.Gameplay
             currentPlayer = instance.GetComponent<PlayerController>();
             if (currentPlayer != null)
                 currentPlayer.SetCheckpoint(spawnPoint.transform.position);
+
+            if (cameraFollow != null && currentPlayer != null)
+                cameraFollow.SetTarget(currentPlayer.transform);
         }
 
         PlayerSpawnPoint FindSpawnPointInScene(Scene scene)
