@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using JumpNowBro.Util;
 
@@ -13,6 +14,8 @@ namespace JumpNowBro.Gameplay
         [SerializeField] Transform groundCheckPoint;
         [SerializeField] float groundCheckRadius = 0.15f;
 
+        const float RespawnDelay = 0.4f;
+
         Rigidbody2D rb;
         IInputSource p1;
         IInputSource p2;
@@ -26,11 +29,31 @@ namespace JumpNowBro.Gameplay
         bool dashChargeAvailable = true;
         int facing = 1;
         Vector2 checkpointPosition;
+        bool isDead;
 
         public bool IsInvulnerable => invulnTimer > 0f;
+        public bool IsDead => isDead;
         public Vector2 CheckpointPosition => checkpointPosition;
 
         public void SetCheckpoint(Vector2 pos) => checkpointPosition = pos;
+
+        public void Die()
+        {
+            if (isDead) return;
+            StartCoroutine(DieRoutine());
+        }
+
+        IEnumerator DieRoutine()
+        {
+            isDead = true;
+            rb.linearVelocity = Vector2.zero;
+            yield return new WaitForSeconds(RespawnDelay);
+            rb.MovePosition(checkpointPosition);
+            rb.linearVelocity = Vector2.zero;
+            dashChargeAvailable = true;
+            state = MoveState.Falling;
+            isDead = false;
+        }
 
         public void Inject(IInputSource player1, IInputSource player2)
         {
@@ -47,6 +70,7 @@ namespace JumpNowBro.Gameplay
         void FixedUpdate()
         {
             if (p1 == null || p2 == null || tuning == null) return;
+            if (isDead) return;
 
             float dt = Time.fixedDeltaTime;
             coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
