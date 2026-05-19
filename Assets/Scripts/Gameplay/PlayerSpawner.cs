@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -11,6 +12,7 @@ namespace JumpNowBro.Gameplay
         PlayerController currentPlayer;
 
         public PlayerController CurrentPlayer => currentPlayer;
+        public event Action<PlayerController> OnPlayerSpawned;
 
         void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
         void OnDisable() => SceneManager.sceneLoaded -= HandleSceneLoaded;
@@ -36,6 +38,8 @@ namespace JumpNowBro.Gameplay
 
             if (cameraFollow != null && currentPlayer != null)
                 cameraFollow.SetTarget(currentPlayer.transform);
+
+            OnPlayerSpawned?.Invoke(currentPlayer);
         }
 
         PlayerSpawnPoint FindSpawnPointInScene(Scene scene)
