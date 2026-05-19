@@ -3,7 +3,8 @@
     "rootNamespace": "JumpNowBro.Gameplay",
     "references": [
         "JumpNowBro.Util",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
