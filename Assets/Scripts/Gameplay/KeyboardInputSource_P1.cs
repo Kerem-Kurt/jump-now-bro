@@ -22,16 +22,13 @@ namespace JumpNowBro.Gameplay
         public bool JumpHeld    => jumpAction != null && jumpAction.IsPressed();
         public bool DashPressed => dashPressedFlag;
 
-        void Awake()
+        void OnEnable()
         {
             map = actions.FindActionMap("Player1", throwIfNotFound: true);
             moveAction = map.FindAction("Move", throwIfNotFound: true);
             jumpAction = map.FindAction("Jump", throwIfNotFound: true);
             dashAction = map.FindAction("Dash", throwIfNotFound: true);
-        }
 
-        void OnEnable()
-        {
             map.Enable();
             jumpAction.performed += OnJumpPerformed;
             dashAction.performed += OnDashPerformed;
@@ -39,9 +36,9 @@ namespace JumpNowBro.Gameplay
 
         void OnDisable()
         {
-            jumpAction.performed -= OnJumpPerformed;
-            dashAction.performed -= OnDashPerformed;
-            map.Disable();
+            if (jumpAction != null) jumpAction.performed -= OnJumpPerformed;
+            if (dashAction != null) dashAction.performed -= OnDashPerformed;
+            if (map != null) map.Disable();
         }
 
         public void Tick()
