@@ -49,6 +49,7 @@ namespace JumpNowBro.Gameplay
             currentLevelIndex++;
             if (levelSceneNames == null || currentLevelIndex >= levelSceneNames.Length)
             {
+                Debug.Log("LevelManager: all levels complete.");
                 OnAllLevelsComplete?.Invoke();
                 return;
             }
