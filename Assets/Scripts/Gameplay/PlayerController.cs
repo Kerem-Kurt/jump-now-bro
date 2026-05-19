@@ -34,6 +34,11 @@ namespace JumpNowBro.Gameplay
         public bool IsInvulnerable => invulnTimer > 0f;
         public bool IsDead => isDead;
         public Vector2 CheckpointPosition => checkpointPosition;
+        public int DeathCount { get; private set; }
+
+        public event System.Action<int> OnDeath;
+
+        public void ResetDeathCount() => DeathCount = 0;
 
         public void SetCheckpoint(Vector2 pos) => checkpointPosition = pos;
 
@@ -46,6 +51,8 @@ namespace JumpNowBro.Gameplay
         IEnumerator DieRoutine()
         {
             isDead = true;
+            DeathCount++;
+            OnDeath?.Invoke(DeathCount);
             rb.linearVelocity = Vector2.zero;
             yield return new WaitForSeconds(RespawnDelay);
             rb.MovePosition(checkpointPosition);
