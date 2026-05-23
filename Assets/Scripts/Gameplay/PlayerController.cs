@@ -13,6 +13,7 @@ namespace JumpNowBro.Gameplay
         [SerializeField] LayerMask groundLayers;
         [SerializeField] Transform groundCheckPoint;
         [SerializeField] float groundCheckRadius = 0.15f;
+        [SerializeField] float fallLimitY = -20f;
 
         const float RespawnDelay = 0.4f;
 
@@ -86,6 +87,12 @@ namespace JumpNowBro.Gameplay
         {
             if (p1 == null || p2 == null || tuning == null) return;
             if (isDead) return;
+
+            if (rb.position.y < fallLimitY)
+            {
+                Die();
+                return;
+            }
 
             float dt = Time.fixedDeltaTime;
             coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
