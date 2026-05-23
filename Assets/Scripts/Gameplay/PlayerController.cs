@@ -55,7 +55,7 @@ namespace JumpNowBro.Gameplay
             OnDeath?.Invoke(DeathCount);
             rb.linearVelocity = Vector2.zero;
             yield return new WaitForSeconds(RespawnDelay);
-            rb.MovePosition(checkpointPosition);
+            rb.position = checkpointPosition;
             rb.linearVelocity = Vector2.zero;
             dashChargeAvailable = true;
             state = MoveState.Falling;
