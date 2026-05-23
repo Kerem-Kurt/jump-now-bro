@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
@@ -73,6 +74,9 @@ namespace JumpNowBro.Gameplay
             yield return load;
 
             currentlyLoadedScene = sceneName;
+
+            if (ControlMapStore.Instance != null)
+                ControlMapStore.Instance.Apply(ControlMap.Default);
         }
     }
 }
