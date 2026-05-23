@@ -722,6 +722,7 @@ MonoBehaviour:
   levelSceneNames:
   - Level_01
   - Level_02
+  - Level_03
   loadFirstOnStart: 1
 --- !u!114 &1565270709
 MonoBehaviour:
