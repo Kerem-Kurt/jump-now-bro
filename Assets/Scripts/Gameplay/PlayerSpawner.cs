@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
@@ -34,7 +35,7 @@ namespace JumpNowBro.Gameplay
             var instance = Instantiate(playerPrefab, spawnPoint.transform.position, Quaternion.identity);
             currentPlayer = instance.GetComponent<PlayerController>();
             if (currentPlayer != null)
-                currentPlayer.SetCheckpoint(spawnPoint.transform.position);
+                currentPlayer.SetCheckpoint(spawnPoint.transform.position, ControlMap.Default);
 
             if (cameraFollow != null && currentPlayer != null)
                 cameraFollow.SetTarget(currentPlayer.transform);

@@ -29,6 +29,7 @@ namespace JumpNowBro.Gameplay
         bool dashChargeAvailable = true;
         int facing = 1;
         Vector2 checkpointPosition;
+        ControlMap checkpointControlMap = ControlMap.Default;
         bool isDead;
 
         public bool IsInvulnerable => invulnTimer > 0f;
@@ -40,7 +41,11 @@ namespace JumpNowBro.Gameplay
 
         public void ResetDeathCount() => DeathCount = 0;
 
-        public void SetCheckpoint(Vector2 pos) => checkpointPosition = pos;
+        public void SetCheckpoint(Vector2 pos, ControlMap map)
+        {
+            checkpointPosition = pos;
+            checkpointControlMap = map;
+        }
 
         public void Die()
         {
@@ -59,6 +64,9 @@ namespace JumpNowBro.Gameplay
             rb.linearVelocity = Vector2.zero;
             dashChargeAvailable = true;
             state = MoveState.Falling;
+            if (ControlMapStore.Instance != null)
+                ControlMapStore.Instance.Apply(checkpointControlMap);
+            SwapTrigger.RestoreCheckpointStates();
             isDead = false;
         }
 
