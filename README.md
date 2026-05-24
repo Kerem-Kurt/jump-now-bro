@@ -21,13 +21,26 @@ A 2D LAN co-op platformer where two players share control of one character. Trig
 
 ## Status
 
-Early scaffolding. Phase 1 (game built solo by Kerem) in progress; Phase 2 (split network layer with teammate) hasn't started.
+Phase 1 (single-player local, built solo by Kerem) is playable end-to-end: all three levels, the control-swap mechanic, death/respawn with checkpoints, dash trail and screen-shake juice, and a level-complete summary. Remaining polish (SFX) is deferred. Phase 2 (split network layer with teammate) hasn't started.
+
+## Controls
+
+Phase 1 runs on a single keyboard. One character is driven by two input sources; each owns a subset of the actions, and swap triggers reassign ownership mid-level. At the start, Player 1 owns everything — crossing a swap trigger hands an action to Player 2 (the banner is tinted by action while armed, grey once crossed). To play solo, drive both halves of the keyboard yourself.
+
+| Action | Player 1 | Player 2 |
+|---|---|---|
+| Move (left/right) | A / D | ← / → |
+| Jump | Left Shift | Space |
+| Dash | Left Ctrl | Right Shift |
+
+Up/down are bound but unused — movement is horizontal-only in the MVP. Touching a hazard or falling off the level respawns you at the last checkpoint; reaching the goal loads the next level; finishing all three shows the death-count summary.
 
 ## Building
 
 1. Install Unity 6.4 (6000.4.7f1) via Unity Hub.
 2. Open this folder in Unity Hub → "Add" → select the cloned repo.
-3. Play in the editor, or use **File → Build Profiles** to produce a standalone Mac (IL2CPP) or Windows (Mono) build.
+3. Open `Assets/Scenes/Bootstrap.unity` and press **Play** — it loads Level 1 additively and spawns the player. Always start from Bootstrap; the persistent managers live there, so playing a level scene on its own won't spawn anything.
+4. To produce a standalone build, use **File → Build Profiles** for a Mac (IL2CPP) or Windows (Mono) target.
 
 ## Repo Layout
 
