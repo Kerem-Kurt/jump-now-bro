@@ -30,17 +30,29 @@ namespace JumpNowBro.Gameplay
                 return;
             }
 
-            if (currentPlayer != null) Destroy(currentPlayer.gameObject);
+            if (currentPlayer != null)
+            {
+                currentPlayer.OnDeath -= HandlePlayerDeath;
+                Destroy(currentPlayer.gameObject);
+            }
 
             var instance = Instantiate(playerPrefab, spawnPoint.transform.position, Quaternion.identity);
             currentPlayer = instance.GetComponent<PlayerController>();
             if (currentPlayer != null)
+            {
                 currentPlayer.SetCheckpoint(spawnPoint.transform.position, ControlMap.Default);
+                currentPlayer.OnDeath += HandlePlayerDeath;
+            }
 
             if (cameraFollow != null && currentPlayer != null)
                 cameraFollow.SetTarget(currentPlayer.transform);
 
             OnPlayerSpawned?.Invoke(currentPlayer);
+        }
+
+        void HandlePlayerDeath(int deathCount)
+        {
+            if (cameraFollow != null) cameraFollow.Shake();
         }
 
         PlayerSpawnPoint FindSpawnPointInScene(Scene scene)
