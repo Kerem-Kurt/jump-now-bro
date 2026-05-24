@@ -39,6 +39,7 @@ namespace JumpNowBro.Gameplay
         public int DeathCount { get; private set; }
 
         public event System.Action<int> OnDeath;
+        public event System.Action OnDash;
 
         public void ResetDeathCount() => DeathCount = 0;
 
@@ -206,6 +207,7 @@ namespace JumpNowBro.Gameplay
             invulnTimer = tuning.dashInvulnerabilityDuration;
             dashChargeAvailable = false;
             rb.linearVelocity = Vector2.zero;
+            OnDash?.Invoke();
         }
 
         bool IsGrounded()
