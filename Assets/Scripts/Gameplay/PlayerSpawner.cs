@@ -11,8 +11,12 @@ namespace JumpNowBro.Gameplay
         [SerializeField] CameraFollow cameraFollow;
 
         PlayerController currentPlayer;
+        int accumulatedDeaths;
 
         public PlayerController CurrentPlayer => currentPlayer;
+        // Player is re-instantiated per level, so its DeathCount is per-level; this
+        // folds finished levels into a running total for the completion summary.
+        public int TotalDeaths => accumulatedDeaths + (currentPlayer != null ? currentPlayer.DeathCount : 0);
         public event Action<PlayerController> OnPlayerSpawned;
 
         void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
@@ -32,6 +36,7 @@ namespace JumpNowBro.Gameplay
 
             if (currentPlayer != null)
             {
+                accumulatedDeaths += currentPlayer.DeathCount;
                 currentPlayer.OnDeath -= HandlePlayerDeath;
                 Destroy(currentPlayer.gameObject);
             }
