@@ -24,3 +24,14 @@ jobs:
       - uses: actions/checkout@v6
       - name: Every asset has a .meta and vice versa
         run: bash ci/check-meta.sh
+
+  api-surface:
+    name: NS2.1 API-surface check (Unity compat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - name: dotnet build (netstandard2.1, compile-only)
+        run: dotnet build ci/JumpNowBro.CoreApiCheck.csproj -c Release --nologo

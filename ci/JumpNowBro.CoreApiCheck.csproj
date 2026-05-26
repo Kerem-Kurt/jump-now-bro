@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    API-surface guard: compiles the engine-free production sources against netstandard2.1 + C# 9 —
+    the API/language surface Unity 6 uses — to catch net8.0-only calls before they reach the editor.
+    Compile-only (NS2.1 is a library contract, not a runnable runtime); the net8.0 CoreTests project
+    runs the actual tests. Networking/Runtime/** (UnityEngine) is excluded, same as CoreTests.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../Assets/Scripts/Util/**/*.cs" />
+    <Compile Include="../Assets/Scripts/Networking/**/*.cs"
+             Exclude="../Assets/Scripts/Networking/Runtime/**/*.cs" />
+  </ItemGroup>
+
+</Project>

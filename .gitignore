@@ -75,7 +75,7 @@ DESIGN.md
 CLAUDE.local.md
 .claude/
 
-# Hand-maintained CI test project (not Unity-generated) + its local build output
-!ci/JumpNowBro.CoreTests.csproj
+# Hand-maintained CI projects (not Unity-generated) + their local build output
+!ci/*.csproj
 ci/bin/
 ci/obj/
