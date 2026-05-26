@@ -3,6 +3,7 @@
     "rootNamespace": "JumpNowBro.Tests",
     "references": [
         "JumpNowBro.Util",
+        "JumpNowBro.Networking",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
