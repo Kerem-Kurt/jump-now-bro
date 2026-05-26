@@ -74,3 +74,8 @@ DESIGN.md
 # Personal Claude Code instructions (private)
 CLAUDE.local.md
 .claude/
+
+# Hand-maintained CI test project (not Unity-generated) + its local build output
+!ci/JumpNowBro.CoreTests.csproj
+ci/bin/
+ci/obj/

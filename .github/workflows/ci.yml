@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests:
+    name: Core logic tests (no Unity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: dotnet test (Util + Networking core)
+        run: dotnet test ci/JumpNowBro.CoreTests.csproj -c Release --nologo
+
+  meta-pairing:
+    name: .meta pairing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every asset has a .meta and vice versa
+        run: bash ci/check-meta.sh
