@@ -26,9 +26,22 @@ namespace JumpNowBro.Networking
 
         public int LocalPort { get; }
 
-        public UdpSocket(int bindPort)
+        // broadcast=true (discovery socket): permit sending to 255.255.255.255, and SO_REUSEADDR so a host
+        // and client on the SAME machine can both bind the discovery port. The gameplay socket leaves both
+        // OFF — SO_REUSEADDR there would let a second host bind the gameplay port and steal packets.
+        public UdpSocket(int bindPort, bool broadcast = false)
         {
-            client = new UdpClient(new IPEndPoint(IPAddress.Any, bindPort));
+            if (broadcast)
+            {
+                client = new UdpClient();
+                client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                client.Client.Bind(new IPEndPoint(IPAddress.Any, bindPort));
+                client.EnableBroadcast = true;
+            }
+            else
+            {
+                client = new UdpClient(new IPEndPoint(IPAddress.Any, bindPort));
+            }
             LocalPort = ((IPEndPoint)client.Client.LocalEndPoint).Port;
 
             running = true;
