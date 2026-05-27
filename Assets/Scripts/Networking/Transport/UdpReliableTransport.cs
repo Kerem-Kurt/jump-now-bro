@@ -6,12 +6,11 @@ namespace JumpNowBro.Networking
     /// Concrete IReliableTransport. Frames messages over an IDatagramChannel, piggybacks message-level
     /// acks on every datagram, retransmits reliable messages on an RTT timer, delivers the reliable
     /// channel in order + de-duplicated, and gates the unreliable channel to latest-wins. Engine-free so
-    /// it runs under the no-Unity CI. The handshake, real-socket binding, discovery, and the silence
-    /// timeout that drives a real OnDisconnected belong to later milestones.
+    /// it runs under the no-Unity CI. The handshake, real-socket binding, and discovery belong to later
+    /// milestones; the peer-silence timeout that fires OnDisconnected lives here (armed on first inbound).
     public sealed class UdpReliableTransport : IReliableTransport
     {
         const int MaxDatagram = 1200;                 // MTU-safe ceiling; oversized sends are dropped
-        const double PingIntervalSeconds = 1.0;
 
         readonly IDatagramChannel channel;
         readonly AckSystem ackTracker = new AckSystem();              // over received reliable message-seqs
@@ -20,16 +19,22 @@ namespace JumpNowBro.Networking
         readonly RttEstimator rtt = new RttEstimator();
         readonly Queue<(MessageType type, byte[] payload)> inbox = new Queue<(MessageType, byte[])>();
         readonly byte[] scratch = new byte[MaxDatagram];
+        readonly double pingInterval;                   // keepalive cadence (v1.2 runs it fast — PING is the only traffic)
+        readonly double silenceTimeout;                 // peer-silence → OnDisconnected
 
         ushort nextPacketSeq = 1;                      // 0 reserved; stamps every datagram, drives unreliable latest-wins
         ushort highestPacketSeq;                       // 0 = none seen yet
         double clock;                                   // seconds since construction; advanced by Tick
         double lastPingAt = double.NegativeInfinity;
+        double lastReceivedAt;                          // clock of the last inbound datagram (liveness baseline)
         bool connected;
+        bool livenessArmed;                             // the silence timeout only runs after the first inbound
 
-        public UdpReliableTransport(IDatagramChannel channel)
+        public UdpReliableTransport(IDatagramChannel channel, double pingIntervalSeconds = 1.0, double silenceTimeoutSeconds = 5.0)
         {
             this.channel = channel;
+            pingInterval = pingIntervalSeconds;
+            silenceTimeout = silenceTimeoutSeconds;
             sendQueue.OnDeliveryFailed += Disconnect;   // a reliable message giving up means the peer is gone
         }
 
@@ -58,11 +63,12 @@ namespace JumpNowBro.Networking
             clock += dt;
             while (channel.TryReceive(out var datagram)) Process(datagram);
             sendQueue.Tick(clock, rtt.RttSeconds, ReliableSend);
-            if (clock - lastPingAt >= PingIntervalSeconds)
+            if (clock - lastPingAt >= pingInterval)
             {
                 SendFramed(MessageType.Ping, 0, ReadOnlySpan<byte>.Empty, NowMs());
                 lastPingAt = clock;
             }
+            if (livenessArmed && clock - lastReceivedAt > silenceTimeout) Disconnect();
         }
 
         // The queue's SendFn: first send and every retransmit reuse the same stable message-seq.
@@ -91,6 +97,8 @@ namespace JumpNowBro.Networking
         {
             if (!PacketHeader.TryRead(datagram, out var h)) return;   // truncated/malformed: drop
 
+            lastReceivedAt = clock;                                   // any inbound keeps the link alive
+            livenessArmed = true;
             if (!connected) { connected = true; OnConnected?.Invoke(); }
 
             AckSystem.ForEachAcked(h.ack, h.ackBits, sendQueue.OnAck);  // acks ride on every inbound datagram
