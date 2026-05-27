@@ -4,7 +4,7 @@ using JumpNowBro.Networking;
 
 namespace JumpNowBro.Tests
 {
-    /// End-to-end transport guarantees over a lossy/reordering/duplicating link. Deterministic per seed.
+    /// End-to-end transport guarantees over the condition simulator (loss + dup + jitter-reorder). Deterministic per seed.
     public class TransportLoopbackTests
     {
         static byte[] I32(int v) => new[] { (byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v };
@@ -24,7 +24,9 @@ namespace JumpNowBro.Tests
         [TestCase(42)]
         public void Reliable_InOrderExactlyOnce_Unreliable_LatestWins_UnderLossReorderDup(int seed)
         {
-            var (ca, cb) = LossyDatagramChannel.Pair(seed, dropProb: 0.25, dupProb: 0.10);
+            var (ia, ib) = InMemoryDatagramChannel.Pair();
+            var ca = new NetworkConditionChannel(ia, jitterSeconds: 0.03, lossProb: 0.25, dupProb: 0.10, seed: seed);
+            var cb = new NetworkConditionChannel(ib, jitterSeconds: 0.03, lossProb: 0.25, dupProb: 0.10, seed: seed * 31 + 1);
             var a = new UdpReliableTransport(ca);
             var b = new UdpReliableTransport(cb);
 
@@ -34,25 +36,30 @@ namespace JumpNowBro.Tests
 
             const int eventCount = 30;
             const int eventEvery = 8;       // ticks between EVENTs
-            const int totalTicks = 1500;    // generous: send window + retransmit/ack recovery under heavy loss
+            const int totalTicks = 2000;    // generous: send window + retransmit/ack recovery under loss
 
             var events = new List<int>();
             var states = new List<int>();
             int nextEventId = 1;
             int stateMarker = 1;
+            double now = 0;
 
             for (int tick = 0; tick < totalTicks; tick++)
             {
+                now += 0.016;
+                ca.Release(now);
+                cb.Release(now);                                                   // deliver due datagrams to the inner channels
+
                 a.Send(Channel.Unreliable, MessageType.State, I32(stateMarker++));  // A->B: ever-increasing markers
-                b.Send(Channel.Unreliable, MessageType.State, I32(0));              // B->A: traffic to piggyback acks home
+                b.Send(Channel.Unreliable, MessageType.State, I32(0));             // B->A: keeps acks piggybacking home
                 if (tick % eventEvery == 0 && nextEventId <= eventCount)
                     a.Send(Channel.Reliable, MessageType.Event, I32(nextEventId++));
 
                 a.Tick(0.016f);
                 b.Tick(0.016f);
 
-                Drain(a, null, null);          // keep A's inbox clear
-                Drain(b, events, states);      // collect B's deliveries
+                Drain(a, null, null);
+                Drain(b, events, states);
             }
 
             // Reliable: every EVENT delivered, in order, exactly once — no gaps, no dups, no extras.
@@ -64,10 +71,9 @@ namespace JumpNowBro.Tests
             for (int i = 1; i < states.Count; i++)
                 Assert.Greater(states[i], states[i - 1], $"STATE regressed at index {i} (seed {seed})");
 
-            // Sanity + no false delivery failure.
             Assert.Greater(states.Count, 0, "no STATE delivered at all");
-            Assert.IsFalse(aDisconnected, "A gave up on a reliable message");
-            Assert.IsFalse(bDisconnected, "B disconnected");
+            Assert.IsFalse(aDisconnected, "A gave up / timed out");
+            Assert.IsFalse(bDisconnected, "B gave up / timed out");
         }
     }
 }
