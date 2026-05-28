@@ -723,6 +723,7 @@ GameObject:
   - component: {fileID: 1565270707}
   - component: {fileID: 1565270709}
   - component: {fileID: 1565270710}
+  - component: {fileID: 1565270711}
   m_Layer: 0
   m_Name: Manager
   m_TagString: Untagged
@@ -833,6 +834,22 @@ MonoBehaviour:
   panel: {fileID: 78949116}
   summaryLabel: {fileID: 2109158248}
   playerSpawner: {fileID: 1565270707}
+  overlayColor: {r: 0, g: 0, b: 0, a: 0.9}
+--- !u!114 &1565270711
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1565270703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abea1e5c3fd574392a39f6e35b902daf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: JumpNowBro.Networking::JumpNowBro.Networking.NetworkManager
+  startupRole: 0
+  gameplayPort: 7777
+  manualHostIp: 127.0.0.1
 --- !u!1 &1591425169
 GameObject:
   m_ObjectHideFlags: 0

@@ -38,6 +38,10 @@ namespace JumpNowBro.Gameplay
             if (loadFirstOnStart) LoadFirst();
         }
 
+        /// Called by NetworkManager in Awake when role != SinglePlayer so the connection flow controls
+        /// when the game begins; the SinglePlayer path leaves this alone and LoadFirst still runs.
+        public void SuppressAutoStart() => loadFirstOnStart = false;
+
         public void LoadFirst()
         {
             currentLevelIndex = -1;
