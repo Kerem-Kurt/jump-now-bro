@@ -850,6 +850,8 @@ MonoBehaviour:
   startupRole: 0
   gameplayPort: 7777
   manualHostIp: 127.0.0.1
+  discoveryPort: 47777
+  gameName: Jump Now Bro!
 --- !u!1 &1591425169
 GameObject:
   m_ObjectHideFlags: 0
