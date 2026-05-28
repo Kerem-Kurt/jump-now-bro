@@ -19,6 +19,8 @@ namespace JumpNowBro.Networking
         [SerializeField] string gameName = "Jump Now Bro!";
 
         public GameRole Role { get; private set; }
+        public Session.SessionState? CurrentSessionState => session?.State;
+        public float CurrentRtt => session?.RttSeconds ?? 0f;
 
         UdpSocket gameplaySocket;
         #pragma warning disable 0649   // wired later by a lag-sim toggle; null until then
@@ -35,8 +37,16 @@ namespace JumpNowBro.Networking
             if (Role == GameRole.SinglePlayer) return;
             Application.runInBackground = true;                           // keep ticking while unfocused so PINGs flow between editors (else the 5s liveness fires)
             FindAnyObjectByType<LevelManager>()?.SuppressAutoStart();     // runs in Awake -> beats LevelManager.Start
-            if (Role == GameRole.Hosting) BeginHosting();
-            else if (Role == GameRole.Client) BeginClient();
+            try
+            {
+                if (Role == GameRole.Hosting) BeginHosting();
+                else if (Role == GameRole.Client) BeginClient();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"NetworkManager: failed to start as {Role} — {e.Message}");
+                EndSessionFromUi();                                       // unwind any partial init and reset so the ConnectionUI stays usable
+            }
         }
 
         void Update()
@@ -128,6 +138,45 @@ namespace JumpNowBro.Networking
             if (state != Session.SessionState.Disconnected) return;
             session = null;
             if (Role == GameRole.Hosting) listening = true;               // re-arm for a fresh client; client just nulls
+        }
+
+        // ---- UI API ----
+
+        public void BeginSoloFromUi()
+        {
+            if (Role != GameRole.SinglePlayer || session != null) return;
+            LevelManager.Instance?.LoadFirst();
+        }
+
+        public void BeginHostingFromUi()
+        {
+            if (Role != GameRole.SinglePlayer || session != null) return;
+            Role = GameRole.Hosting;
+            Application.runInBackground = true;
+            try { BeginHosting(); }
+            catch (System.Exception e) { Debug.LogError($"BeginHosting failed: {e.Message}"); EndSessionFromUi(); }
+        }
+
+        public void BeginClientFromUi(string hostIp)
+        {
+            if (Role != GameRole.SinglePlayer || session != null) return;
+            if (string.IsNullOrWhiteSpace(hostIp)) return;
+            Role = GameRole.Client;
+            manualHostIp = hostIp;
+            Application.runInBackground = true;
+            try { BeginClient(); }
+            catch (System.Exception e) { Debug.LogError($"BeginClient failed: {e.Message}"); EndSessionFromUi(); }
+        }
+
+        public void EndSessionFromUi()
+        {
+            var s = session;
+            if (s != null) { s.SendGoodbye(GoodbyeReason.Normal); s.Tick(0); }
+            session = null;
+            discovery?.Dispose(); discovery = null;
+            gameplaySocket?.Dispose(); gameplaySocket = null;
+            listening = false;
+            Role = GameRole.SinglePlayer;
         }
     }
 }

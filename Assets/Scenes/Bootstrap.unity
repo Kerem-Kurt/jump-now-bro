@@ -724,6 +724,7 @@ GameObject:
   - component: {fileID: 1565270709}
   - component: {fileID: 1565270710}
   - component: {fileID: 1565270711}
+  - component: {fileID: 1565270712}
   m_Layer: 0
   m_Name: Manager
   m_TagString: Untagged
@@ -852,6 +853,18 @@ MonoBehaviour:
   manualHostIp: 127.0.0.1
   discoveryPort: 47777
   gameName: Jump Now Bro!
+--- !u!114 &1565270712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1565270703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf310f5229a96414e8e5853bb74e5908, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: JumpNowBro.Networking::JumpNowBro.Networking.ConnectionUI
 --- !u!1 &1591425169
 GameObject:
   m_ObjectHideFlags: 0
