@@ -14,9 +14,7 @@ namespace JumpNowBro.Networking
     {
         [SerializeField] GameRole startupRole = GameRole.SinglePlayer;
         [SerializeField] ushort gameplayPort = 7777;
-        #pragma warning disable 0414   // read by the client lifecycle in the next issue
         [SerializeField] string manualHostIp = "127.0.0.1";
-        #pragma warning restore 0414
         [SerializeField] ushort discoveryPort = 47777;
         [SerializeField] string gameName = "Jump Now Bro!";
 
@@ -35,15 +33,17 @@ namespace JumpNowBro.Networking
         {
             Role = startupRole;
             if (Role == GameRole.SinglePlayer) return;
+            Application.runInBackground = true;                           // keep ticking while unfocused so PINGs flow between editors (else the 5s liveness fires)
             FindAnyObjectByType<LevelManager>()?.SuppressAutoStart();     // runs in Awake -> beats LevelManager.Start
             if (Role == GameRole.Hosting) BeginHosting();
+            else if (Role == GameRole.Client) BeginClient();
         }
 
         void Update()
         {
             if (Role == GameRole.SinglePlayer) return;                    // SinglePlayer is inert
             clock += Time.deltaTime;                                      // one Σdt clock fed to lag-channel + session/transport + discovery
-            if (Role == GameRole.Hosting && listening) PollForHello();
+            if (Role == GameRole.Hosting && listening && gameplaySocket != null) PollForHello();
             condChannel?.Release(clock);
             session?.Tick(Time.deltaTime);                                // session pumps its transport internally — never tick transport directly
             discovery?.Tick(clock);
@@ -51,6 +51,12 @@ namespace JumpNowBro.Networking
 
         void OnDestroy()
         {
+            var s = session;                                              // capture: SendGoodbye -> SetState -> OnStateChanged nulls the field
+            if (s != null)
+            {
+                s.SendGoodbye(GoodbyeReason.Normal);                      // queue a graceful GOODBYE...
+                s.Tick(0);                                                // ...and flush it (firstSend ignores RTO)
+            }
             discovery?.Dispose();
             gameplaySocket?.Dispose();                                    // kills the background receive thread on play-stop
         }
@@ -60,12 +66,21 @@ namespace JumpNowBro.Networking
         void BeginHosting()
         {
             gameplaySocket = new UdpSocket(gameplayPort);                 // gameplay socket: NOT broadcast (the discovery socket gets that)
-            discovery = DiscoveryService.StartHost(discoveryPort, new LanBeacon
+            try
             {
-                Magic = SessionProtocol.Magic,
-                GameName = gameName,
-                GameplayPort = gameplayPort,
-            });
+                discovery = DiscoveryService.StartHost(discoveryPort, new LanBeacon
+                {
+                    Magic = SessionProtocol.Magic,
+                    GameName = gameName,
+                    GameplayPort = gameplayPort,
+                });
+            }
+            catch                                                         // discovery is best-effort; unwind cleanly so Update doesn't see a half-built host
+            {
+                gameplaySocket.Dispose();
+                gameplaySocket = null;
+                throw;
+            }
             listening = true;
         }
 
@@ -91,11 +106,28 @@ namespace JumpNowBro.Networking
             listening = false;
         }
 
+        // ---- client lifecycle ----
+
+        void BeginClient()
+        {
+            gameplaySocket = new UdpSocket(0);                            // ephemeral port: host + client coexist on one machine
+            discovery = DiscoveryService.StartClient(discoveryPort);      // host list builds for the connection UI
+            var host = new IPEndPoint(IPAddress.Parse(manualHostIp), gameplayPort);
+            var ch = new UdpDatagramChannel(gameplaySocket, host);
+            var transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
+            session = new Session(transport, isHost: false);
+            session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
+            session.Start();                                              // sends HELLO; awaits WELCOME
+        }
+
+        // ---- shared ----
+
         void OnSessionStateChanged(Session.SessionState state)
         {
+            Debug.Log($"[{Role}] Session: {state}");                      // visibility until ConnectionUI surfaces this
             if (state != Session.SessionState.Disconnected) return;
-            session = null;                                               // peer gone (GOODBYE / liveness timeout) — re-arm Listening for a fresh client
-            listening = true;
+            session = null;
+            if (Role == GameRole.Hosting) listening = true;               // re-arm for a fresh client; client just nulls
         }
     }
 }
