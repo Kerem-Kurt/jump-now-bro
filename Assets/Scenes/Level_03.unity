@@ -381,6 +381,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.SwapTrigger
   actionToSwap: 2
+  showBanner: 1
+  armedAlpha: 0.55
+  firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  bannerSortingOrder: 1
 --- !u!61 &424147842
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -533,6 +537,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.SwapTrigger
   actionToSwap: 0
+  showBanner: 1
+  armedAlpha: 0.55
+  firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  bannerSortingOrder: 1
 --- !u!61 &648175841
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -856,6 +864,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.SwapTrigger
   actionToSwap: 1
+  showBanner: 1
+  armedAlpha: 0.55
+  firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  bannerSortingOrder: 1
 --- !u!61 &1145048771
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1396,7 +1408,7 @@ Transform:
   m_GameObject: {fileID: 2079567311}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -15, y: -2.5, z: 0}
+  m_LocalPosition: {x: -15, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
