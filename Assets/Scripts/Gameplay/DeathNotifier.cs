@@ -14,7 +14,12 @@ namespace JumpNowBro.Gameplay
     {
         public static DeathNotifier Instance { get; private set; }
 
-        /// Fires with the NEW total death count post-increment.
+        /// Cumulative death count — the single source of truth for any HUD/UI that wants to display it.
+        /// Updated by Raise; LevelHud reads this on spawn (when no death event has fired yet).
+        public int Current { get; private set; }
+
+        /// Fires when Current actually changes. Same-count Raise is a no-op (STATE may arrive at 30 Hz
+        /// with the same deathCount on most ticks — we don't want camera-shake spam).
         public event Action<int> OnDeath;
 
         void Awake()
@@ -24,6 +29,11 @@ namespace JumpNowBro.Gameplay
             DontDestroyOnLoad(gameObject);
         }
 
-        public void Raise(int newCount) => OnDeath?.Invoke(newCount);
+        public void Raise(int newCount)
+        {
+            if (newCount == Current) return;                                     // dedup on equal so STATE-driven path is cheap
+            Current = newCount;
+            OnDeath?.Invoke(newCount);
+        }
     }
 }

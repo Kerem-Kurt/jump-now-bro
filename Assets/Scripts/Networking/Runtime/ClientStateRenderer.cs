@@ -19,8 +19,6 @@ namespace JumpNowBro.Networking
         Transform target;
         uint lastSeenSnapshotTick;
         bool haveSeen;
-        ushort lastSeenDeathCount;
-        bool deathCountInitialized;
 
         public MovementState CurrentState { get; private set; }
         /// Cached so v1.5's predictor can dead-reckon host-owned inputs between snapshots.
@@ -50,18 +48,11 @@ namespace JumpNowBro.Networking
             if (ControlMapStore.Instance != null && !MapsEqual(body.controlMap, ControlMapStore.Instance.Current))
                 ControlMapStore.Instance.Apply(body.controlMap);
 
-            // Death delta — fire the synthetic OnDeath so HUD counter + camera shake respond identically
-            // to the host path. First STATE seeds the baseline without raising (no fake death on join).
-            if (!deathCountInitialized)
-            {
-                deathCountInitialized = true;
-                lastSeenDeathCount = body.deathCount;
-            }
-            else if (body.deathCount != lastSeenDeathCount)
-            {
-                lastSeenDeathCount = body.deathCount;
-                DeathNotifier.Instance?.Raise(body.deathCount);
-            }
+            // Push the cumulative count into DeathNotifier on every STATE — Raise dedups on equal so the
+            // 30 Hz traffic doesn't spam camera shake; the HUD picks up the change via the OnDeath event.
+            // Side effect: mid-game join with host already dead N times triggers ONE shake when client
+            // first syncs — acceptable UX (and arguably a useful "you're joining a death-prone partner" cue).
+            DeathNotifier.Instance?.Raise(body.deathCount);
         }
 
         static bool MapsEqual(ControlMap a, ControlMap b) =>

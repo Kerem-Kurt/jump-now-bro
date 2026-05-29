@@ -59,7 +59,9 @@ namespace JumpNowBro.Networking
             {
                 snapshotTick           = hostTick,
                 lastConsumedClientTick = lastConsumedClientTickGetter != null ? lastConsumedClientTickGetter() : 0u,
-                deathCount             = (ushort)(controller != null ? controller.DeathCount : 0),
+                // Cumulative across level transitions — client mirrors this via DeathNotifier.Raise so its
+                // HUD lines up with the host's TotalDeaths instead of a per-level controller.DeathCount.
+                deathCount             = (ushort)(PlayerSpawner.Instance != null ? PlayerSpawner.Instance.TotalDeaths : 0),
                 sceneIndex             = (byte)(levelManager != null && levelManager.CurrentLevelIndex >= 0 && levelManager.CurrentLevelIndex < 0xFF
                                                 ? levelManager.CurrentLevelIndex : 0xFF),
                 controlMap             = store != null ? store.Current : ControlMap.Default,

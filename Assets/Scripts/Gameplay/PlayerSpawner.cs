@@ -7,13 +7,19 @@ namespace JumpNowBro.Gameplay
 {
     public class PlayerSpawner : MonoBehaviour
     {
+        public static PlayerSpawner Instance { get; private set; }
+
         [SerializeField] GameObject playerPrefab;
         [SerializeField] CameraFollow cameraFollow;
 
         PlayerController currentPlayer;
+        GameObject currentPlayerInstance;                                       // GameObject ref survives client's PlayerController destroy
         int accumulatedDeaths;
 
         public PlayerController CurrentPlayer => currentPlayer;
+        /// Returns the spawned Player GameObject (or null if none spawned / destroyed). Use this for
+        /// teardown on EndSessionFromUi — PlayerController may have been destroyed by the client wiring.
+        public GameObject CurrentPlayerInstance => currentPlayerInstance;
         // Player is re-instantiated per level, so its DeathCount is per-level; this
         // folds finished levels into a running total for the completion summary.
         public int TotalDeaths => accumulatedDeaths + (currentPlayer != null ? currentPlayer.DeathCount : 0);
@@ -21,6 +27,12 @@ namespace JumpNowBro.Gameplay
         /// when they need it. The v1.4 client destroys PlayerController, so the previous Action<PlayerController>
         /// signature would have fired with null and NRE'd downstream subscribers.
         public event Action<GameObject> OnPlayerSpawned;
+
+        void Awake()
+        {
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            Instance = this;
+        }
 
         void OnEnable()
         {
@@ -61,6 +73,7 @@ namespace JumpNowBro.Gameplay
             }
 
             var instance = Instantiate(playerPrefab, spawnPoint.transform.position, Quaternion.identity);
+            currentPlayerInstance = instance;
             currentPlayer = instance.GetComponent<PlayerController>();
             if (currentPlayer != null)
             {
@@ -76,8 +89,10 @@ namespace JumpNowBro.Gameplay
 
         // Bridge PlayerController.OnDeath -> DeathNotifier so all subscribers (HUD, camera) see deaths
         // through a single source — same path the client takes via STATE-delta in ClientStateRenderer.
+        // Raise with cumulative TotalDeaths (not per-level) so HUD survives level transitions and the
+        // client receives the same number via STATE.deathCount (which the host's broadcaster reads here).
         void HandlePlayerDeath(int deathCount) =>
-            DeathNotifier.Instance?.Raise(deathCount);
+            DeathNotifier.Instance?.Raise(TotalDeaths);
 
         PlayerSpawnPoint FindSpawnPointInScene(Scene scene)
         {

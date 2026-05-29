@@ -49,7 +49,11 @@ namespace JumpNowBro.Gameplay
 
         void HandleComplete()
         {
-            int deaths = playerSpawner != null ? playerSpawner.TotalDeaths : 0;
+            // DeathNotifier.Current is the single source of truth — host writes cumulative TotalDeaths,
+            // client mirrors via STATE.deathCount. PlayerSpawner.TotalDeaths reads 0 on the client (where
+            // PlayerController is destroyed by the role-aware spawner), so we'd have shown the wrong total.
+            int deaths = DeathNotifier.Instance != null ? DeathNotifier.Instance.Current
+                       : (playerSpawner != null ? playerSpawner.TotalDeaths : 0);
             if (summaryLabel != null)
                 summaryLabel.text = $"Complete!\nDeaths: {deaths}";
             if (panel != null) panel.SetActive(true);

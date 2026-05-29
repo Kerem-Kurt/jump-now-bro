@@ -21,6 +21,11 @@ namespace JumpNowBro.Gameplay
         /// the inbound EVENT, which calls LoadByIndex — the resulting OnBeforeLevelLoad is a no-op there).
         public event Action<int> OnBeforeLevelLoad;
 
+        /// Sentinel sceneIndex meaning "all levels complete" — host pushes it through OnBeforeLevelLoad so
+        /// NetworkManager forwards a LEVEL_LOAD EVENT with this byte; client's LoadByIndex translates it
+        /// back into OnAllLevelsComplete locally. Keeps the EVENT shape unchanged (1-byte sceneIndex).
+        public const byte AllLevelsCompleteSentinel = 0xFE;
+
         public int CurrentLevelIndex => currentLevelIndex;
         public string CurrentLevelName =>
             (currentLevelIndex >= 0 && currentLevelIndex < levelSceneNames.Length)
@@ -63,6 +68,7 @@ namespace JumpNowBro.Gameplay
             if (levelSceneNames == null || currentLevelIndex >= levelSceneNames.Length)
             {
                 Debug.Log("LevelManager: all levels complete.");
+                OnBeforeLevelLoad?.Invoke(AllLevelsCompleteSentinel);              // host: NetworkManager forwards as LEVEL_LOAD EVENT
                 OnAllLevelsComplete?.Invoke();
                 return;
             }
@@ -72,10 +78,16 @@ namespace JumpNowBro.Gameplay
 
         /// Jump straight to a specific level by index — used by the v1.4 client on join (driven by WELCOME)
         /// and by the v1.4 LEVEL_LOAD EVENT receiver. Idempotent on already-current index. 0xFF sentinel
-        /// (host pre-load) is treated as a no-op.
+        /// (host pre-load) is treated as a no-op; 0xFE sentinel (host all-levels-complete) fires the
+        /// CompleteScreen path without trying to load a scene.
         public void LoadByIndex(int sceneIndex)
         {
             if (sceneIndex < 0 || sceneIndex == 0xFF) return;
+            if (sceneIndex == AllLevelsCompleteSentinel)
+            {
+                OnAllLevelsComplete?.Invoke();
+                return;
+            }
             if (levelSceneNames == null || sceneIndex >= levelSceneNames.Length)
             {
                 Debug.LogError($"LevelManager.LoadByIndex: {sceneIndex} out of range.", this);
