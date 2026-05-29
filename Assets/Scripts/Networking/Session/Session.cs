@@ -1,4 +1,5 @@
 using System;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Networking
 {
@@ -12,10 +13,12 @@ namespace JumpNowBro.Networking
         public enum SessionState { Idle, Connecting, Established, Disconnected }
 
         const double ConnectTimeoutSeconds = 4.0;   // the only FAST teardown for a stuck handshake (RTO exhaustion is far slower)
-        const int MaxBody = 16;
+        const int MaxBody = 24;                     // v1.4 Welcome body = 14 bytes; cushion for v1.5+ extensions
 
         readonly IReliableTransport transport;
         readonly bool isHost;
+        readonly Func<byte> sceneIndexProvider;     // host only — read at WELCOME-send time so it reflects current scene
+        readonly Func<uint> hostTickProvider;       // host only — sampled into WELCOME body for debug / future offset estimation
         readonly byte[] scratch = new byte[MaxBody];
 
         double clock;
@@ -25,11 +28,16 @@ namespace JumpNowBro.Networking
         public GoodbyeReason LastGoodbye { get; private set; }
         public float RttSeconds => transport.RttSeconds;
         public event Action<SessionState> OnStateChanged;
+        /// Raised on the CLIENT after a valid WELCOME is parsed — carries scene index for mid-game join + peer slot confirmation.
+        public event Action<Welcome> OnWelcomeReceived;
 
-        public Session(IReliableTransport transport, bool isHost)
+        public Session(IReliableTransport transport, bool isHost,
+                       Func<byte> sceneIndexProvider = null, Func<uint> hostTickProvider = null)
         {
             this.transport = transport;
             this.isHost = isHost;
+            this.sceneIndexProvider = sceneIndexProvider;
+            this.hostTickProvider = hostTickProvider;
             transport.OnDisconnected += () => SetState(SessionState.Disconnected);
         }
 
@@ -71,8 +79,10 @@ namespace JumpNowBro.Networking
                     break;
 
                 case MessageType.Welcome when !isHost:
-                    bool accepted = Welcome.TryRead(payload, out var w) && w.Accepted
+                    bool wellFormed = Welcome.TryRead(payload, out var w);
+                    bool accepted = wellFormed && w.Accepted
                                     && w.Magic == SessionProtocol.Magic && w.Version == SessionProtocol.Version;
+                    if (accepted) OnWelcomeReceived?.Invoke(w);   // fires BEFORE state flip so subscribers see Established with welcome in hand
                     SetState(accepted ? SessionState.Established : SessionState.Disconnected);
                     break;
 
@@ -91,7 +101,19 @@ namespace JumpNowBro.Networking
 
         void SendWelcome(bool accepted, WelcomeReason reason)
         {
-            int n = new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = accepted, Reason = reason }.Write(scratch);
+            // v1.4 convention: host owns P1, client owns P2. The byte is confirmation, not configuration —
+            // host enforces the binding regardless; client logs/asserts agreement.
+            var welcome = new Welcome
+            {
+                Magic              = SessionProtocol.Magic,
+                Version            = SessionProtocol.Version,
+                Accepted           = accepted,
+                Reason             = reason,
+                PeerOwner          = InputOwner.P2,
+                CurrentSceneIndex  = sceneIndexProvider != null ? sceneIndexProvider() : (byte)0xFF,
+                HostTickAtWelcome  = hostTickProvider   != null ? hostTickProvider()   : 0u,
+            };
+            int n = welcome.Write(scratch);
             transport.Send(Channel.Reliable, MessageType.Welcome, scratch.AsSpan(0, n));
         }
 

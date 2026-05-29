@@ -1,4 +1,5 @@
 using System;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Networking
 {
@@ -45,12 +46,18 @@ namespace JumpNowBro.Networking
         }
     }
 
+    /// WELCOME is the host's response to a validated HELLO. v1.4 enriches the body so the client can
+    /// (1) confirm its assigned slot (peerOwner=P2 — host is always P1), (2) load whichever level the host
+    /// is currently on (mid-game join), and (3) note the host's tick at WELCOME-send for debug telemetry.
     public struct Welcome
     {
         public uint Magic;
         public ushort Version;
         public bool Accepted;
         public WelcomeReason Reason;
+        public InputOwner PeerOwner;             // v1.4: always P2 — host owns P1 by convention
+        public byte CurrentSceneIndex;           // host's LevelManager.CurrentLevelIndex; 0xFF if pre-load
+        public uint HostTickAtWelcome;           // v1.4 logs only; v1.5+ may seed offset estimation here
 
         public int Write(Span<byte> dst)
         {
@@ -59,6 +66,9 @@ namespace JumpNowBro.Networking
             w.WriteUShort(Version);
             w.WriteByte((byte)(Accepted ? 1 : 0));
             w.WriteByte((byte)Reason);
+            w.WriteByte((byte)PeerOwner);
+            w.WriteByte(CurrentSceneIndex);
+            w.WriteUInt(HostTickAtWelcome);
             return w.Position;
         }
 
@@ -68,8 +78,13 @@ namespace JumpNowBro.Networking
             var r = new ByteReader(src);
             if (!r.TryReadUInt(out w.Magic) || !r.TryReadUShort(out w.Version)) return false;
             if (!r.TryReadByte(out var accepted) || !r.TryReadByte(out var reason)) return false;
+            if (!r.TryReadByte(out var peerOwner)) return false;
+            if (peerOwner > 1) return false;                          // out-of-range enum byte → malformed
+            if (!r.TryReadByte(out w.CurrentSceneIndex)) return false;
+            if (!r.TryReadUInt(out w.HostTickAtWelcome)) return false;
             w.Accepted = accepted != 0;
             w.Reason = (WelcomeReason)reason;
+            w.PeerOwner = (InputOwner)peerOwner;
             return true;
         }
     }

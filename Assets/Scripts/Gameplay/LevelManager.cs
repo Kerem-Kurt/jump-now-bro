@@ -61,6 +61,22 @@ namespace JumpNowBro.Gameplay
             StartCoroutine(LoadLevelRoutine(levelSceneNames[currentLevelIndex]));
         }
 
+        /// Jump straight to a specific level by index — used by the v1.4 client on join (driven by WELCOME)
+        /// and by the v1.4 LEVEL_LOAD EVENT receiver. Idempotent on already-current index. 0xFF sentinel
+        /// (host pre-load) is treated as a no-op.
+        public void LoadByIndex(int sceneIndex)
+        {
+            if (sceneIndex < 0 || sceneIndex == 0xFF) return;
+            if (levelSceneNames == null || sceneIndex >= levelSceneNames.Length)
+            {
+                Debug.LogError($"LevelManager.LoadByIndex: {sceneIndex} out of range.", this);
+                return;
+            }
+            if (sceneIndex == currentLevelIndex && currentlyLoadedScene == levelSceneNames[sceneIndex]) return;
+            currentLevelIndex = sceneIndex;
+            StartCoroutine(LoadLevelRoutine(levelSceneNames[sceneIndex]));
+        }
+
         IEnumerator LoadLevelRoutine(string sceneName)
         {
             if (!string.IsNullOrEmpty(currentlyLoadedScene))

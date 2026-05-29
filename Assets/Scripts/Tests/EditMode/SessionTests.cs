@@ -1,6 +1,7 @@
 using System;
 using NUnit.Framework;
 using JumpNowBro.Networking;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Tests
 {
@@ -20,22 +21,40 @@ namespace JumpNowBro.Tests
         [Test]
         public void Messages_RoundTrip()
         {
-            var buf = new byte[16];
+            var buf = new byte[24];
 
             int n = new Hello { Magic = 0xDEADBEEFu, Version = 7 }.Write(buf);
             Assert.IsTrue(Hello.TryRead(buf.AsSpan(0, n), out var h));
             Assert.AreEqual(0xDEADBEEFu, h.Magic);
             Assert.AreEqual(7, h.Version);
 
-            n = new Welcome { Magic = 0x11223344u, Version = 9, Accepted = true, Reason = WelcomeReason.Accepted }.Write(buf);
+            var welcomeOut = new Welcome
+            {
+                Magic = 0x11223344u, Version = 9, Accepted = true, Reason = WelcomeReason.Accepted,
+                PeerOwner = InputOwner.P2, CurrentSceneIndex = 2, HostTickAtWelcome = 123_456u,
+            };
+            n = welcomeOut.Write(buf);
             Assert.IsTrue(Welcome.TryRead(buf.AsSpan(0, n), out var w));
             Assert.AreEqual(0x11223344u, w.Magic);
             Assert.IsTrue(w.Accepted);
             Assert.AreEqual(WelcomeReason.Accepted, w.Reason);
+            Assert.AreEqual(InputOwner.P2, w.PeerOwner);
+            Assert.AreEqual(2, w.CurrentSceneIndex);
+            Assert.AreEqual(123_456u, w.HostTickAtWelcome);
 
             n = new Goodbye { Reason = GoodbyeReason.Busy }.Write(buf);
             Assert.IsTrue(Goodbye.TryRead(buf.AsSpan(0, n), out var g));
             Assert.AreEqual(GoodbyeReason.Busy, g.Reason);
+        }
+
+        [Test]
+        public void Welcome_OutOfRangePeerOwner_Rejected()
+        {
+            // Manually craft a Welcome body with PeerOwner = 9 (outside the InputOwner enum range).
+            var bytes = new byte[14];
+            new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
+            bytes[8] = 9;                                        // peerOwner byte position
+            Assert.IsFalse(Welcome.TryRead(bytes, out _));
         }
 
         [Test]
@@ -64,6 +83,28 @@ namespace JumpNowBro.Tests
 
             Assert.AreEqual(Session.SessionState.Established, client.State);
             Assert.AreEqual(Session.SessionState.Established, host.State);
+        }
+
+        [Test]
+        public void Handshake_DeliversWelcome_WithPeerOwnerP2_AndSceneIndex()
+        {
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+            // Host providers: scene index 2 (mid-game join scenario), tick 9999.
+            var host = new Session(new UdpReliableTransport(cb), isHost: true,
+                sceneIndexProvider: () => (byte)2, hostTickProvider: () => 9999u);
+
+            Welcome? received = null;
+            client.OnWelcomeReceived += w => received = w;
+
+            client.Start();
+            host.Start();
+            for (int i = 0; i < 40; i++) { client.Tick(0.05f); host.Tick(0.05f); }
+
+            Assert.IsTrue(received.HasValue, "client never observed OnWelcomeReceived");
+            Assert.AreEqual(InputOwner.P2, received.Value.PeerOwner);
+            Assert.AreEqual(2, received.Value.CurrentSceneIndex);
+            Assert.AreEqual(9999u, received.Value.HostTickAtWelcome);
         }
 
         [Test]

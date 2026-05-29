@@ -110,7 +110,14 @@ namespace JumpNowBro.Networking
             var ch = new UdpDatagramChannel(gameplaySocket, peer);
             ch.PreSeed(helloDatagram);                                    // transport processes the validated HELLO immediately
             var transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);   // ~5 Hz keepalive — v1.2's only traffic
-            session = new Session(transport, isHost: true);
+            // Providers sampled at WELCOME-send time so currentSceneIndex reflects the actual scene
+            // the host is on (mid-game join case); 0xFF sentinel means "no level loaded yet".
+            session = new Session(transport, isHost: true,
+                sceneIndexProvider: () => {
+                    var idx = LevelManager.Instance != null ? LevelManager.Instance.CurrentLevelIndex : -1;
+                    return idx >= 0 && idx < 0xFF ? (byte)idx : (byte)0xFF;
+                },
+                hostTickProvider: () => TickClock.Instance != null ? TickClock.Instance.Current : 0u);
             session.OnStateChanged += OnSessionStateChanged;
             session.Start();                                              // queues WELCOME; flushes on the next session.Tick
             listening = false;
@@ -127,6 +134,7 @@ namespace JumpNowBro.Networking
             var transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
             session = new Session(transport, isHost: false);
             session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
+            session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on
             session.Start();                                              // sends HELLO; awaits WELCOME
         }
 
@@ -135,9 +143,23 @@ namespace JumpNowBro.Networking
         void OnSessionStateChanged(Session.SessionState state)
         {
             Debug.Log($"[{Role}] Session: {state}");                      // visibility until ConnectionUI surfaces this
+            if (state == Session.SessionState.Established && Role == GameRole.Hosting)
+            {
+                if (LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex < 0)
+                    LevelManager.Instance.LoadFirst();                    // initial-join: host starts the game once the wire is up
+            }
             if (state != Session.SessionState.Disconnected) return;
             session = null;
             if (Role == GameRole.Hosting) listening = true;               // re-arm for a fresh client; client just nulls
+        }
+
+        void OnClientWelcomeReceived(Welcome w)
+        {
+            if (w.PeerOwner != JumpNowBro.Util.InputOwner.P2)
+                Debug.LogWarning($"[Client] WELCOME peerOwner={w.PeerOwner}, expected P2 — version skew?");
+            // currentSceneIndex == 0xFF means host hasn't loaded yet; LoadByIndex is a no-op in that case.
+            // The LEVEL_LOAD EVENT path (lands in #78) drives the initial-join client scene load.
+            LevelManager.Instance?.LoadByIndex(w.CurrentSceneIndex);
         }
 
         // ---- UI API ----
