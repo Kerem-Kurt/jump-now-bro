@@ -32,16 +32,16 @@ namespace JumpNowBro.Gameplay
             if (levelLabel != null) levelLabel.text = $"Level: {scene.name}";
         }
 
-        void HandlePlayerSpawned(PlayerController player)
-        {
-            UpdateDeathLabel(player != null ? player.DeathCount : 0);
-        }
+        // PlayerController is re-instantiated per level, so its DeathCount resets to 0 across loads —
+        // the HUD wants the cumulative total to match the end-of-game summary. PlayerSpawner.TotalDeaths
+        // folds finished levels into the running count; sample it on both spawn and death-delta.
+        void HandlePlayerSpawned(PlayerController player) => UpdateDeathLabel();
+        void HandleDeath(int _) => UpdateDeathLabel();
 
-        void HandleDeath(int deathCount) => UpdateDeathLabel(deathCount);
-
-        void UpdateDeathLabel(int count)
+        void UpdateDeathLabel()
         {
-            if (deathLabel != null) deathLabel.text = $"Deaths: {count}";
+            int total = playerSpawner != null ? playerSpawner.TotalDeaths : 0;
+            if (deathLabel != null) deathLabel.text = $"Deaths: {total}";
         }
     }
 }
