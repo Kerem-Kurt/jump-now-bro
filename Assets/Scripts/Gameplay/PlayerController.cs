@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
@@ -8,7 +9,7 @@ namespace JumpNowBro.Gameplay
     public class PlayerController : MonoBehaviour
     {
         [SerializeField] PlayerTuning tuning;
-        [SerializeField] LayerMask groundLayers;
+        [SerializeField, FormerlySerializedAs("groundLayers")] LayerMask solidLayers;
         [SerializeField] Transform groundCheckPoint;
         [SerializeField] float groundCheckRadius = 0.15f;
         [SerializeField] float fallLimitY = -20f;
@@ -16,6 +17,7 @@ namespace JumpNowBro.Gameplay
         const float RespawnDelay = 0.4f;
 
         Rigidbody2D rb;
+        ICollisionWorld collisionWorld;
         IInputSource p1;
         IInputSource p2;
         MoveState state;
@@ -79,6 +81,7 @@ namespace JumpNowBro.Gameplay
         void Awake()
         {
             rb = GetComponent<Rigidbody2D>();
+            collisionWorld = new UnityCollisionWorld(rb, solidLayers, groundCheckPoint, groundCheckRadius);   // built but not called until #69
             state = MoveState.Falling;
         }
 
@@ -211,7 +214,7 @@ namespace JumpNowBro.Gameplay
         bool IsGrounded()
         {
             if (groundCheckPoint == null) return false;
-            return Physics2D.OverlapCircle(groundCheckPoint.position, groundCheckRadius, groundLayers);
+            return Physics2D.OverlapCircle(groundCheckPoint.position, groundCheckRadius, solidLayers);
         }
     }
 }
