@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using UnityEngine;
 using JumpNowBro.Gameplay;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Networking
 {
@@ -37,21 +38,22 @@ namespace JumpNowBro.Networking
         UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
         double clock;
+        readonly byte[] eventSendScratch = new byte[EventBody.Size];      // LEVEL_LOAD send buffer; one body fits easily
 
-        // Gameplay-message dispatch — Session.OnGameplayMessage forwards INPUT/STATE/EVENT here;
-        // #77 (renderer/receiver) and #78 (host input) register handlers via SetStateHandler etc.
-        Action<byte[]> stateHandler;
-        Action<byte[]> eventHandler;
-        Action<byte[]> inputHandler;
-
-        public void SetStateHandler(Action<byte[]> h) => stateHandler = h;
-        public void SetEventHandler(Action<byte[]> h) => eventHandler = h;
-        public void SetInputHandler(Action<byte[]> h) => inputHandler = h;
+        // Per-spawn role-aware components — re-bound each PlayerSpawner.OnPlayerSpawned. The dispatch
+        // closures (state/input handlers) close over `this`, then read these fields fresh each call, so
+        // a Player respawn (level transition) hot-swaps the target without any handler nulling races.
+        NetworkRemoteInputSource currentHostRemote;
+        ClientStateRenderer currentClientRenderer;
 
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
+            // Register the Authority.IsHost check used by the four trigger gates. Default is "act as host";
+            // we register a real check that returns false on Client. SinglePlayer + Hosting still pass.
+            Authority.RegisterIsHost(
+                () => Instance == null || Instance.Role == GameRole.SinglePlayer || Instance.Role == GameRole.Hosting);
             Role = startupRole;
             if (Role == GameRole.SinglePlayer) return;
             Application.runInBackground = true;                           // keep ticking while unfocused so PINGs flow between editors (else the 5s liveness fires)
@@ -66,6 +68,15 @@ namespace JumpNowBro.Networking
                 Debug.LogError($"NetworkManager: failed to start as {Role} — {e.Message}");
                 EndSessionFromUi();                                       // unwind any partial init and reset so the ConnectionUI stays usable
             }
+        }
+
+        void Start()
+        {
+            // Subscriptions live for the manager's lifetime — fires for any role. Handlers themselves
+            // check Role at call time (so a BeginHostingFromUi flip later in the session works).
+            var spawner = FindAnyObjectByType<PlayerSpawner>();
+            if (spawner != null) spawner.OnPlayerSpawned += OnPlayerSpawnedDispatch;
+            if (LevelManager.Instance != null) LevelManager.Instance.OnBeforeLevelLoad += OnLevelLoadBegin;
         }
 
         void Update()
@@ -164,11 +175,76 @@ namespace JumpNowBro.Networking
         {
             switch (type)
             {
-                case MessageType.State: stateHandler?.Invoke(payload); break;
-                case MessageType.Event: eventHandler?.Invoke(payload); break;
-                case MessageType.Input: inputHandler?.Invoke(payload); break;
+                case MessageType.State:
+                    if (currentClientRenderer != null) currentClientRenderer.ApplyPayload(payload);
+                    break;
+                case MessageType.Input:
+                    if (currentHostRemote != null
+                        && InputBody.TryRead(payload, out var baseTick, out _, out var packed))
+                        currentHostRemote.EnqueueFromInputBody(baseTick, packed);
+                    break;
+                case MessageType.Event:
+                    if (EventBody.TryRead(payload, out var ev) && ev.kind == EventKind.LevelLoad)
+                        LevelManager.Instance?.LoadByIndex(ev.sceneIndex);
+                    break;
                 // Ping/Pong are transport-internal — handled inside UdpReliableTransport, never bubble up here.
             }
+        }
+
+        // ---- spawn-time role-aware wiring ----
+
+        // Called for every PlayerSpawner.OnPlayerSpawned (every level load). SinglePlayer leaves the
+        // prefab's PlayerBootstrap to wire local keyboards; Host/Client swap in the network-aware ones.
+        void OnPlayerSpawnedDispatch(GameObject instance)
+        {
+            if (Role == GameRole.SinglePlayer) return;
+
+            var bootstrap = instance.GetComponent<PlayerBootstrap>();
+            if (bootstrap != null) Destroy(bootstrap);
+
+            if (Role == GameRole.Hosting) WireHosting(instance);
+            else if (Role == GameRole.Client) WireClient(instance);
+        }
+
+        void WireHosting(GameObject instance)
+        {
+            var ctrl  = instance.GetComponent<PlayerController>();
+            var keyP1 = instance.GetComponent<KeyboardInputSource_P1>();
+            var keyP2 = instance.GetComponent<KeyboardInputSource_P2>();
+            if (keyP2 != null) Destroy(keyP2);                            // host's P2 input comes over the wire
+
+            currentHostRemote = instance.AddComponent<NetworkRemoteInputSource>();
+            if (ctrl != null) ctrl.Inject(keyP1, currentHostRemote);
+
+            var bcast = instance.AddComponent<NetworkStateBroadcaster>();
+            bcast.Bind(transport, ControlMapStore.Instance, LevelManager.Instance,
+                       () => currentHostRemote != null ? currentHostRemote.LastConsumedClientTick : 0u);
+        }
+
+        void WireClient(GameObject instance)
+        {
+            // Client doesn't simulate — Movement.Step never runs; PlayerController + P1 keyboard go away.
+            var ctrl  = instance.GetComponent<PlayerController>();
+            if (ctrl != null) Destroy(ctrl);
+            var keyP1 = instance.GetComponent<KeyboardInputSource_P1>();
+            if (keyP1 != null) Destroy(keyP1);
+
+            // Client = P2 by convention; sampler reads the local P2 keyboard.
+            var keyP2 = instance.GetComponent<KeyboardInputSource_P2>();
+
+            var sender = instance.AddComponent<ClientInputSender>();
+            sender.Bind(keyP2, transport, TickClock.Instance);
+
+            currentClientRenderer = instance.AddComponent<ClientStateRenderer>();
+            currentClientRenderer.Bind(instance.transform);
+        }
+
+        void OnLevelLoadBegin(int sceneIndex)
+        {
+            if (Role != GameRole.Hosting || transport == null) return;
+            var body = new EventBody { kind = EventKind.LevelLoad, sceneIndex = (byte)sceneIndex };
+            int n = body.Write(eventSendScratch);
+            transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
         }
 
         // ---- shared ----

@@ -9,8 +9,11 @@ namespace JumpNowBro.Networking
     /// changes mirror to ControlMapStore so HUD reads stay role-agnostic; deathCount increments fire
     /// DeathNotifier so camera shake and HUD respond on the client.
     ///
-    /// `currentState` mirrors the post-step MovementState in the same shape PlayerController holds —
+    /// `CurrentState` mirrors the post-step MovementState in the same shape PlayerController holds —
     /// v1.5's predictor inherits this field as its seed without a wire-format change.
+    ///
+    /// NetworkManager owns the dispatch closure that calls ApplyPayload; this component just stores
+    /// the bound target + the most-recent state. Respawn-time handler-nulling races avoided.
     public sealed class ClientStateRenderer : MonoBehaviour
     {
         Transform target;
@@ -23,18 +26,9 @@ namespace JumpNowBro.Networking
         /// Cached so v1.5's predictor can dead-reckon host-owned inputs between snapshots.
         public PlayerInputFrame LastRemoteHostFrame { get; private set; }
 
-        public void Bind(Transform target)
-        {
-            this.target = target;
-            if (NetworkManager.Instance != null) NetworkManager.Instance.SetStateHandler(OnStateBytes);
-        }
+        public void Bind(Transform target) => this.target = target;
 
-        void OnDestroy()
-        {
-            if (NetworkManager.Instance != null) NetworkManager.Instance.SetStateHandler(null);
-        }
-
-        void OnStateBytes(byte[] payload)
+        public void ApplyPayload(byte[] payload)
         {
             if (!StateBody.TryRead(payload, out var body)) return;
             // Staleness gate: latest-wins on u32 snapshotTick. The `haveSeen` sentinel lets the very
@@ -46,7 +40,7 @@ namespace JumpNowBro.Networking
             if (target != null)
             {
                 target.position = new Vector3(body.movementState.posX, body.movementState.posY, target.position.z);
-                Physics2D.SyncTransforms();                                  // m_AutoSyncTransforms=0 — push the pose into Physics2D immediately so the camera follow reads it
+                Physics2D.SyncTransforms();                                  // m_AutoSyncTransforms=0 — push the pose into Physics2D so the camera follow reads it
             }
 
             CurrentState        = body.movementState;

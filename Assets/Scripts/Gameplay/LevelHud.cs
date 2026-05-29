@@ -35,7 +35,7 @@ namespace JumpNowBro.Gameplay
         // PlayerController is re-instantiated per level, so its DeathCount resets to 0 across loads —
         // the HUD wants the cumulative total to match the end-of-game summary. PlayerSpawner.TotalDeaths
         // folds finished levels into the running count; sample it on both spawn and death-delta.
-        void HandlePlayerSpawned(PlayerController player) => UpdateDeathLabel();
+        void HandlePlayerSpawned(GameObject player) => UpdateDeathLabel();
         void HandleDeath(int _) => UpdateDeathLabel();
 
         void UpdateDeathLabel()

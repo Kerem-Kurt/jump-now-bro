@@ -47,6 +47,7 @@ namespace JumpNowBro.Gameplay
 
         void OnTriggerEnter2D(Collider2D other)
         {
+            if (!Authority.IsHost) return;                         // client never mutates the ControlMap; it mirrors STATE
             if (fired) return;
             if (!other.TryGetComponent<PlayerController>(out _)) return;
 

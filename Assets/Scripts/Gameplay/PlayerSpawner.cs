@@ -17,7 +17,10 @@ namespace JumpNowBro.Gameplay
         // Player is re-instantiated per level, so its DeathCount is per-level; this
         // folds finished levels into a running total for the completion summary.
         public int TotalDeaths => accumulatedDeaths + (currentPlayer != null ? currentPlayer.DeathCount : 0);
-        public event Action<PlayerController> OnPlayerSpawned;
+        /// Fires with the spawned Player GameObject — subscribers TryGetComponent for PlayerController
+        /// when they need it. The v1.4 client destroys PlayerController, so the previous Action<PlayerController>
+        /// signature would have fired with null and NRE'd downstream subscribers.
+        public event Action<GameObject> OnPlayerSpawned;
 
         void OnEnable()
         {
@@ -65,10 +68,10 @@ namespace JumpNowBro.Gameplay
                 currentPlayer.OnDeath += HandlePlayerDeath;
             }
 
-            if (cameraFollow != null && currentPlayer != null)
-                cameraFollow.SetTarget(currentPlayer.transform);
+            if (cameraFollow != null)
+                cameraFollow.SetTarget(instance.transform);                // works regardless of role: client destroys PlayerController, but the transform stays
 
-            OnPlayerSpawned?.Invoke(currentPlayer);
+            OnPlayerSpawned?.Invoke(instance);
         }
 
         // Bridge PlayerController.OnDeath -> DeathNotifier so all subscribers (HUD, camera) see deaths

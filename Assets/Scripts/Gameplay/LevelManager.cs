@@ -16,6 +16,10 @@ namespace JumpNowBro.Gameplay
         string currentlyLoadedScene;
 
         public event Action OnAllLevelsComplete;
+        /// Fires with the target sceneIndex BEFORE LoadLevelRoutine starts. NetworkManager subscribes on
+        /// the host to send LEVEL_LOAD EVENT; the client subscribes nothing (its own load is driven by
+        /// the inbound EVENT, which calls LoadByIndex — the resulting OnBeforeLevelLoad is a no-op there).
+        public event Action<int> OnBeforeLevelLoad;
 
         public int CurrentLevelIndex => currentLevelIndex;
         public string CurrentLevelName =>
@@ -62,6 +66,7 @@ namespace JumpNowBro.Gameplay
                 OnAllLevelsComplete?.Invoke();
                 return;
             }
+            OnBeforeLevelLoad?.Invoke(currentLevelIndex);
             StartCoroutine(LoadLevelRoutine(levelSceneNames[currentLevelIndex]));
         }
 
@@ -78,6 +83,7 @@ namespace JumpNowBro.Gameplay
             }
             if (sceneIndex == currentLevelIndex && currentlyLoadedScene == levelSceneNames[sceneIndex]) return;
             currentLevelIndex = sceneIndex;
+            OnBeforeLevelLoad?.Invoke(currentLevelIndex);
             StartCoroutine(LoadLevelRoutine(levelSceneNames[sceneIndex]));
         }
 

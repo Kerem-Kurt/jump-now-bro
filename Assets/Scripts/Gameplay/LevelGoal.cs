@@ -1,4 +1,5 @@
 using UnityEngine;
+using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
@@ -9,6 +10,7 @@ namespace JumpNowBro.Gameplay
 
         void OnTriggerEnter2D(Collider2D other)
         {
+            if (!Authority.IsHost) return;                         // host triggers LoadNext (which sends LEVEL_LOAD EVENT); client loads from the EVENT
             if (fired) return;
             if (!other.TryGetComponent<PlayerController>(out _)) return;
 

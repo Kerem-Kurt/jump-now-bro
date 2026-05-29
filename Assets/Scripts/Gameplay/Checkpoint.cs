@@ -11,6 +11,7 @@ namespace JumpNowBro.Gameplay
 
         void OnTriggerEnter2D(Collider2D other)
         {
+            if (!Authority.IsHost) return;                         // client respawns are driven by STATE, not local checkpoints
             if (fired) return;
             if (!other.TryGetComponent<PlayerController>(out var player)) return;
             fired = true;
