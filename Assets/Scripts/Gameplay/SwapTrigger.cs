@@ -47,9 +47,19 @@ namespace JumpNowBro.Gameplay
 
         void OnTriggerEnter2D(Collider2D other)
         {
-            if (!Authority.IsHost) return;                         // client never mutates the ControlMap; it mirrors STATE
             if (fired) return;
-            if (!other.TryGetComponent<PlayerController>(out _)) return;
+            // Detect Player via the "Player" tag instead of TryGetComponent<PlayerController> — client's
+            // role-aware spawner destroys PlayerController, so the component check would always fail
+            // on client and the visual update below would never fire.
+            if (!other.CompareTag("Player")) return;
+
+            // Visual update on BOTH host and client — banner greys regardless of role so the client's
+            // HUD matches the host's. The ControlMap mutation below is the only authoritative state
+            // change and stays gated to host (client mirrors via STATE.controlMap).
+            fired = true;
+            SetBannerArmed(false);
+
+            if (!Authority.IsHost) return;
 
             var store = ControlMapStore.Instance;
             if (store == null)
@@ -57,10 +67,7 @@ namespace JumpNowBro.Gameplay
                 Debug.LogError($"SwapTrigger on '{name}' fired but no ControlMapStore in scene.", this);
                 return;
             }
-
-            fired = true;
             store.Apply(ControlMap.WithSwap(store.Current, actionToSwap));
-            SetBannerArmed(false);
         }
 
         void AcquireBanner()
