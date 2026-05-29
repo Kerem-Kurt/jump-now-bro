@@ -20,20 +20,12 @@ namespace JumpNowBro.Gameplay
         ICollisionWorld collisionWorld;
         IInputSource p1;
         IInputSource p2;
-        MoveState state;
-        bool wasJumpHeld;
-        float coyoteTimer;
-        float jumpBufferTimer;
-        float dashTimer;
-        float freezeTimer;
-        float invulnTimer;
-        bool dashChargeAvailable = true;
-        int facing = 1;
+        MovementState currentState;                                                 // all per-tick state (MoveState, timers, facing, dash charge, wasJumpHeld)
         Vector2 checkpointPosition;
         ControlMap checkpointControlMap = ControlMap.Default;
         bool isDead;
 
-        public bool IsInvulnerable => invulnTimer > 0f;
+        public bool IsInvulnerable => currentState.invulnTimer > 0f;
         public bool IsDead => isDead;
         public Vector2 CheckpointPosition => checkpointPosition;
         public int DeathCount { get; private set; }
@@ -59,13 +51,12 @@ namespace JumpNowBro.Gameplay
         {
             isDead = true;
             DeathCount++;
-            OnDeath?.Invoke(DeathCount);
+            OnDeath?.Invoke(DeathCount);                                            // fires immediately so juice (camera shake, death-count UI) lands before respawn
             rb.linearVelocity = Vector2.zero;
             yield return new WaitForSeconds(RespawnDelay);
             rb.position = checkpointPosition;
             rb.linearVelocity = Vector2.zero;
-            dashChargeAvailable = true;
-            state = MoveState.Falling;
+            currentState = FreshSpawnState();
             if (ControlMapStore.Instance != null)
                 ControlMapStore.Instance.Apply(checkpointControlMap);
             SwapTrigger.RestoreCheckpointStates();
@@ -81,8 +72,8 @@ namespace JumpNowBro.Gameplay
         void Awake()
         {
             rb = GetComponent<Rigidbody2D>();
-            collisionWorld = new UnityCollisionWorld(rb, solidLayers, groundCheckPoint, groundCheckRadius);   // built but not called until #69
-            state = MoveState.Falling;
+            collisionWorld = new UnityCollisionWorld(rb, solidLayers, groundCheckPoint, groundCheckRadius);
+            currentState = FreshSpawnState();
         }
 
         void FixedUpdate()
@@ -90,131 +81,53 @@ namespace JumpNowBro.Gameplay
             if (p1 == null || p2 == null || tuning == null) return;
             if (isDead) return;
 
-            if (rb.position.y < fallLimitY)
+            float dt = Time.fixedDeltaTime;
+
+            currentState.posX = rb.position.x;                                       // at #69 read pos AND vel from rb every tick — Box2D modifies vel
+            currentState.posY = rb.position.y;                                       // between ticks (contact response zeroes vel.y on landing, friction
+            currentState.velX = rb.linearVelocity.x;                                 // damps vel.x). v0.4-mvp's FixedUpdate read vel.y the same way. At #70
+            currentState.velY = rb.linearVelocity.y;                                 // (Kinematic) Movement.Step owns vel; this read drops out.
+
+            var f1 = ReadFrame(p1);
+            var f2 = ReadFrame(p2);
+            var map = ControlMapStore.Instance != null ? ControlMapStore.Instance.Current : ControlMap.Default;
+            var input = ControlMap.Route(map, f1, f2);
+
+            var movementTuning = tuning.AsMovementTuning(dt, fallLimitY);            // rebuilt every tick so Inspector live-tune still works
+
+            // sweep:false at #69 — Dynamic body, Box2D still handles collision blocking. #70 flips to sweep:true.
+            var (newState, edges) = Movement.Step(currentState, input, movementTuning, dt, collisionWorld, sweep: false);
+
+            if ((edges & EdgeFlags.DiedThisTick) != 0)                               // fall-limit → Die() routes through the existing 0.4s respawn coroutine
             {
                 Die();
                 return;
             }
+            if ((edges & EdgeFlags.DashedThisTick) != 0) OnDash?.Invoke();
 
-            float dt = Time.fixedDeltaTime;
-            coyoteTimer = Mathf.Max(0f, coyoteTimer - dt);
-            jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - dt);
-            invulnTimer = Mathf.Max(0f, invulnTimer - dt);
+            currentState = newState;
+            rb.linearVelocity = new Vector2(newState.velX, newState.velY);
 
-            bool grounded = IsGrounded();
-
-            ControlMap controlMap = ControlMapStore.Instance != null
-                ? ControlMapStore.Instance.Current
-                : ControlMap.Default;
-            IInputSource moveSrc = controlMap.moveOwner == InputOwner.P1 ? p1 : p2;
-            IInputSource jumpSrc = controlMap.jumpOwner == InputOwner.P1 ? p1 : p2;
-            IInputSource dashSrc = controlMap.dashOwner == InputOwner.P1 ? p1 : p2;
-
-            bool jumpPressed = jumpSrc.JumpPressed;
-            bool jumpHeld = jumpSrc.JumpHeld;
-            bool dashPressed = dashSrc.DashPressed;
-
-            int dir = (moveSrc.MoveRight ? 1 : 0) - (moveSrc.MoveLeft ? 1 : 0);
-            if (dir != 0) facing = dir;
-
-            if (jumpPressed) jumpBufferTimer = tuning.jumpBufferTime;
-            bool jumpAllowed = InputForgiveness.CanJump(coyoteTimer, jumpBufferTimer, grounded, jumpPressed);
-
-            switch (state)
-            {
-                case MoveState.Grounded:
-                    if (dashPressed && dashChargeAvailable) FireDash();
-                    else if (jumpAllowed) FireJump();
-                    else if (!grounded)
-                    {
-                        state = MoveState.Falling;
-                        coyoteTimer = tuning.coyoteTime;
-                    }
-                    break;
-                case MoveState.Jumping:
-                    if (dashPressed && dashChargeAvailable) FireDash();
-                    else
-                    {
-                        if (rb.linearVelocity.y > 0f && !jumpHeld && wasJumpHeld) ApplyJumpCut();
-                        if (rb.linearVelocity.y <= 0f) state = MoveState.Falling;
-                    }
-                    break;
-                case MoveState.Falling:
-                    if (dashPressed && dashChargeAvailable) FireDash();
-                    else if (jumpAllowed) FireJump();
-                    else if (grounded)
-                    {
-                        state = MoveState.Grounded;
-                        dashChargeAvailable = true;
-                    }
-                    break;
-                case MoveState.Dashing:
-                    if (freezeTimer > 0f)
-                    {
-                        rb.linearVelocity = Vector2.zero;
-                        freezeTimer = Mathf.Max(0f, freezeTimer - dt);
-                        if (freezeTimer <= 0f)
-                        {
-                            float dashSpeed = tuning.dashDistance / tuning.dashDuration;
-                            rb.linearVelocity = new Vector2(facing * dashSpeed, 0f);
-                        }
-                    }
-                    else
-                    {
-                        dashTimer = Mathf.Max(0f, dashTimer - dt);
-                        if (dashTimer <= 0f) state = MoveState.Falling;
-                    }
-                    break;
-            }
-
-            if (state != MoveState.Dashing)
-            {
-                float speedMul = (state == MoveState.Grounded) ? 1f : tuning.airControlMultiplier;
-                float targetVx = dir * tuning.runSpeed * speedMul;
-
-                Vector2 vel = rb.linearVelocity;
-                vel.x = targetVx;
-                vel.y -= tuning.gravity * dt;
-                rb.linearVelocity = vel;
-            }
-
-            wasJumpHeld = jumpHeld;
             p1.Tick();
             p2.Tick();
         }
 
-        void FireJump()
-        {
-            var v = rb.linearVelocity;
-            v.y = tuning.jumpVelocity;
-            rb.linearVelocity = v;
-            state = MoveState.Jumping;
-            jumpBufferTimer = 0f;
-            coyoteTimer = 0f;
-        }
+        static PlayerInputFrame ReadFrame(IInputSource s) =>
+            new PlayerInputFrame
+            {
+                moveLeft    = s.MoveLeft,
+                moveRight   = s.MoveRight,
+                jumpPressed = s.JumpPressed,
+                jumpHeld    = s.JumpHeld,
+                dashPressed = s.DashPressed,
+            };
 
-        void ApplyJumpCut()
-        {
-            var v = rb.linearVelocity;
-            v.y *= tuning.variableJumpCutMultiplier;
-            rb.linearVelocity = v;
-        }
-
-        void FireDash()
-        {
-            state = MoveState.Dashing;
-            freezeTimer = tuning.dashFreezeFrameDuration;
-            dashTimer = tuning.dashDuration;
-            invulnTimer = tuning.dashInvulnerabilityDuration;
-            dashChargeAvailable = false;
-            rb.linearVelocity = Vector2.zero;
-            OnDash?.Invoke();
-        }
-
-        bool IsGrounded()
-        {
-            if (groundCheckPoint == null) return false;
-            return Physics2D.OverlapCircle(groundCheckPoint.position, groundCheckRadius, solidLayers);
-        }
+        static MovementState FreshSpawnState() =>
+            new MovementState
+            {
+                state               = MoveState.Falling,
+                facing              = 1,
+                dashChargeAvailable = true,
+            };
     }
 }
