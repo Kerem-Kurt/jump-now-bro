@@ -43,20 +43,57 @@ namespace JumpNowBro.Tests
                     "in MovementGoldenMasterTests.cs (mind C# verbatim-string @\"...\" escaping " +
                     "of double-quotes; this CSV has none, so it pastes cleanly):\n\n" + actual);
             }
-            // Normalize: collapse any whitespace (newlines, spaces, tabs) to single spaces.
-            // The CSV values are commas + digits + minus signs only — no whitespace inside a
-            // field — so this safely tolerates baselines pasted as one long line (e.g. when
-            // copied from Unity Test Runner's XML export) AND newline-formatted baselines.
-            Assert.AreEqual(Normalize(expected), Normalize(actual),
-                "Movement.Step trajectory drift detected. If the drift is intentional " +
-                "(e.g. tuning pass, deliberate feel change), regenerate the baseline via the " +
-                "[Explicit] RegenerateBaseline test. Otherwise this is a regression — bisect " +
-                "to the commit that broke it.");
+            CompareTrajectories(expected, actual);
         }
 
-        static string Normalize(string s) =>
-            string.Join(' ', s.Split(new[] { ' ', '\t', '\n', '\r' },
-                System.StringSplitOptions.RemoveEmptyEntries));
+        // Tolerance-based row-by-row compare. Float columns absorb cross-runtime drift (e.g.
+        // Mono on macOS ↔ .NET 8 on Linux CI can disagree at ~1e-4 per accumulator over a
+        // 300-tick run because `posX += velX * dt` rounds slightly differently); integer
+        // columns (state, facing, freeze ticks, dash charge, wasHeld, dead, edges) require
+        // exact match because any change there IS a behavioral change. Whitespace tolerance
+        // (collapse any run of newlines/spaces) handles baselines pasted as a single line.
+        const float Eps = 0.01f;
+        static readonly bool[] IsFloatCol = {
+            false,                                  // tick
+            true, true, true, true,                 // posX, posY, velX, velY
+            false, false,                           // state, facing
+            true, true, true, true,                 // coyote, buffer, dashT, invulnT
+            false, false, false, false, false       // freezeT, dashCharge, wasHeld, dead, edges
+        };
+
+        static void CompareTrajectories(string expected, string actual)
+        {
+            var er = SplitRows(expected);
+            var ar = SplitRows(actual);
+            Assert.AreEqual(er.Length, ar.Length, $"Row count differs (expected {er.Length}, actual {ar.Length}).");
+            Assert.AreEqual(er[0], ar[0], "Header row mismatch.");
+            for (int i = 1; i < er.Length; i++) CompareRow(i, er[i], ar[i]);
+        }
+
+        static void CompareRow(int rowIdx, string expected, string actual)
+        {
+            var ec = expected.Split(',');
+            var ac = actual.Split(',');
+            Assert.AreEqual(ec.Length, ac.Length, $"Row {rowIdx}: column count differs.");
+            for (int col = 0; col < ec.Length; col++)
+            {
+                if (col < IsFloatCol.Length && IsFloatCol[col])
+                {
+                    float e = float.Parse(ec[col], CultureInfo.InvariantCulture);
+                    float a = float.Parse(ac[col], CultureInfo.InvariantCulture);
+                    Assert.That(a, Is.EqualTo(e).Within(Eps),
+                        $"Row {rowIdx} col {col} (float): expected {e}, actual {a} (drift > {Eps}).");
+                }
+                else
+                {
+                    Assert.AreEqual(ec[col], ac[col],
+                        $"Row {rowIdx} col {col} (int): expected {ec[col]}, actual {ac[col]}.");
+                }
+            }
+        }
+
+        static string[] SplitRows(string s) =>
+            s.Split(new[] { ' ', '\t', '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
 
         [Test, Explicit]
         public void RegenerateBaseline()
