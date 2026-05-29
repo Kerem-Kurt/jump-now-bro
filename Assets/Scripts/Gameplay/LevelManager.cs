@@ -58,9 +58,17 @@ namespace JumpNowBro.Gameplay
         public void LoadFirst()
         {
             currentLevelIndex = -1;
-            currentlyLoadedScene = null;
+            // currentlyLoadedScene stays — if a scene from a previous session is still loaded,
+            // LoadLevelRoutine (called by LoadNext) will properly unload it via `yield return` before
+            // loading Level_01. Nulling it here would skip that unload and leave an orphan scene.
             LoadNext();
         }
+
+        /// Reset the level index so a Leave-then-rejoin-to-same-level isn't skipped by LoadByIndex's
+        /// idempotence check. We DON'T null currentlyLoadedScene — LoadLevelRoutine needs that to do the
+        /// unload-then-load handoff via `yield return UnloadSceneAsync` (async; a fire-and-forget unload
+        /// from EndSessionFromUi raced the next LoadSceneAsync and left the client stuck at spawn).
+        public void ResetIndex() => currentLevelIndex = -1;
 
         public void LoadNext()
         {

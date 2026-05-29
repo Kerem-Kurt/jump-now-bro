@@ -31,9 +31,11 @@ namespace JumpNowBro.Networking
             this.tickClock = tickClock;
         }
 
+        bool transportAlive = true;
+
         void FixedUpdate()
         {
-            if (source == null || transport == null || tickClock == null) return;
+            if (!transportAlive || source == null || transport == null || tickClock == null) return;
 
             uint tick = tickClock.Current;
             var f = new PlayerInputFrame
@@ -46,7 +48,17 @@ namespace JumpNowBro.Networking
             };
 
             int n = ring.Sample(tick, f, sendBuffer);
-            transport.Send(Channel.Unreliable, MessageType.Input, new System.ReadOnlySpan<byte>(sendBuffer, 0, n));
+            try
+            {
+                transport.Send(Channel.Unreliable, MessageType.Input, new System.ReadOnlySpan<byte>(sendBuffer, 0, n));
+            }
+            catch (System.ObjectDisposedException)
+            {
+                // Socket went away between EndSessionFromUi marking this GameObject for destroy and Unity
+                // actually destroying it. Latch off so subsequent FixedUpdates in the same end-of-frame
+                // window also short-circuit.
+                transportAlive = false;
+            }
 
             source.Tick();                              // clears local edge bits — mirrors KeyboardInputSource's pattern
         }

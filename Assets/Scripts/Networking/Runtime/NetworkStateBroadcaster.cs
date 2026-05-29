@@ -22,6 +22,7 @@ namespace JumpNowBro.Networking
         LevelManager levelManager;
         Func<uint> lastConsumedClientTickGetter;
         byte[] sendBuffer;
+        bool transportAlive = true;
 
         void Awake()
         {
@@ -49,7 +50,7 @@ namespace JumpNowBro.Networking
 
         void Handle(uint hostTick, MovementState state)
         {
-            if (transport == null) return;
+            if (!transportAlive || transport == null) return;
             var role = NetworkManager.Instance != null ? NetworkManager.Instance.Role : GameRole.SinglePlayer;
             if (role != GameRole.Hosting) return;                                  // defense in depth: only host broadcasts
             bool isLoading = levelManager != null && levelManager.IsLoading;
@@ -69,7 +70,15 @@ namespace JumpNowBro.Networking
                 movementState          = state,
             };
             int n = body.Write(sendBuffer);
-            transport.Send(Channel.Unreliable, MessageType.State, new ReadOnlySpan<byte>(sendBuffer, 0, n));
+            try
+            {
+                transport.Send(Channel.Unreliable, MessageType.State, new ReadOnlySpan<byte>(sendBuffer, 0, n));
+            }
+            catch (System.ObjectDisposedException)
+            {
+                // End-of-frame teardown race after EndSessionFromUi — see ClientInputSender for context.
+                transportAlive = false;
+            }
         }
     }
 }

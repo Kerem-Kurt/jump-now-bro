@@ -261,7 +261,11 @@ namespace JumpNowBro.Networking
             if (state != Session.SessionState.Disconnected) return;
             session = null;
             transport = null;
-            if (Role == GameRole.Hosting) listening = true;               // re-arm for a fresh client; client just nulls
+            if (Role == GameRole.Hosting)
+            {
+                listening = true;
+                Debug.Log("[Hosting] Listening for a new client...");     // surface the re-arm so the host knows it's still discoverable
+            }
         }
 
         void OnClientWelcomeReceived(Welcome w)
@@ -305,6 +309,21 @@ namespace JumpNowBro.Networking
         {
             var s = session;
             if (s != null) { s.SendGoodbye(GoodbyeReason.Normal); s.Tick(0); }
+
+            // Tear down the spawned Player BEFORE disposing the socket. ClientInputSender and
+            // NetworkStateBroadcaster fire on every FixedUpdate; if they're still alive when the
+            // socket goes away, they'd throw ObjectDisposedException on next Send. Destroying the
+            // GameObject removes all of them in one stroke.
+            if (PlayerSpawner.Instance != null && PlayerSpawner.Instance.CurrentPlayerInstance != null)
+                Destroy(PlayerSpawner.Instance.CurrentPlayerInstance);
+            currentHostRemote = null;
+            currentClientRenderer = null;
+
+            // Reset LevelManager's index so the next Solo/Host/Join isn't tricked into a no-op by
+            // LoadByIndex's idempotence check (which keys on currentLevelIndex + currentlyLoadedScene).
+            // currentlyLoadedScene stays so LoadLevelRoutine can yield on the unload before re-loading.
+            LevelManager.Instance?.ResetIndex();
+
             session = null;
             transport = null;
             discovery?.Dispose(); discovery = null;

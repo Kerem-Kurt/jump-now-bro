@@ -65,11 +65,17 @@ namespace JumpNowBro.Gameplay
                 return;
             }
 
-            if (currentPlayer != null)
+            // Gate on the GameObject ref, not the PlayerController component — the client wiring destroys
+            // the controller, so a `currentPlayer != null` check evaporates to fake-null and the previous
+            // Player(Clone) stays alive across level loads (one extra clone per level — the bug seen at #78).
+            if (currentPlayerInstance != null)
             {
-                accumulatedDeaths += currentPlayer.DeathCount;
-                currentPlayer.OnDeath -= HandlePlayerDeath;
-                Destroy(currentPlayer.gameObject);
+                if (currentPlayer != null)
+                {
+                    accumulatedDeaths += currentPlayer.DeathCount;
+                    currentPlayer.OnDeath -= HandlePlayerDeath;
+                }
+                Destroy(currentPlayerInstance);
             }
 
             var instance = Instantiate(playerPrefab, spawnPoint.transform.position, Quaternion.identity);
