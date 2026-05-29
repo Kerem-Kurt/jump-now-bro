@@ -57,5 +57,66 @@ namespace JumpNowBro.Tests
             Assert.AreEqual(InputOwner.P1, dashSwap.jumpOwner);
             Assert.AreEqual(InputOwner.P2, dashSwap.dashOwner);
         }
+
+        // ---- Route ----
+
+        static PlayerInputFrame Frame(bool left = false, bool right = false,
+                                      bool jp = false, bool jh = false, bool dp = false) =>
+            new PlayerInputFrame { moveLeft = left, moveRight = right,
+                                   jumpPressed = jp, jumpHeld = jh, dashPressed = dp };
+
+        [Test]
+        public void Route_DefaultMap_TakesAllFromP1()
+        {
+            var p1 = Frame(right: true, jp: true, jh: true, dp: true);
+            var p2 = Frame(left: true);                                  // p2 fully active but ignored
+            var e = ControlMap.Route(ControlMap.Default, p1, p2);
+            Assert.AreEqual(+1, e.moveDir);
+            Assert.IsTrue(e.jumpPressed);
+            Assert.IsTrue(e.jumpHeld);
+            Assert.IsTrue(e.dashPressed);
+        }
+
+        [Test]
+        public void Route_JumpSwapped_JumpFromP2_OthersFromP1()
+        {
+            var map = ControlMap.WithSwap(ControlMap.Default, PlayerAction.Jump);
+            var p1 = Frame(right: true, dp: true);                       // owns move + dash
+            var p2 = Frame(jp: true, jh: true);                          // owns jump
+            var e = ControlMap.Route(map, p1, p2);
+            Assert.AreEqual(+1, e.moveDir);
+            Assert.IsTrue(e.jumpPressed);
+            Assert.IsTrue(e.jumpHeld);
+            Assert.IsTrue(e.dashPressed);
+        }
+
+        [Test]
+        public void Route_MoveDir_LeftPress_NegativeOne() =>
+            Assert.AreEqual(-1, ControlMap.Route(ControlMap.Default, Frame(left: true), default).moveDir);
+
+        [Test]
+        public void Route_MoveDir_BothPressed_Zero() =>
+            Assert.AreEqual(0, ControlMap.Route(ControlMap.Default, Frame(left: true, right: true), default).moveDir);
+
+        [Test]
+        public void Route_MoveDir_NeitherPressed_Zero() =>
+            Assert.AreEqual(0, ControlMap.Route(ControlMap.Default, default, default).moveDir);
+
+        [Test]
+        public void Route_AllActionsSwapped_AllFromP2()
+        {
+            var map = ControlMap.WithSwap(
+                       ControlMap.WithSwap(
+                        ControlMap.WithSwap(ControlMap.Default, PlayerAction.MoveHorizontal),
+                                                                PlayerAction.Jump),
+                                                                PlayerAction.Dash);
+            var p1 = Frame(right: true, jp: true, dp: true);             // ignored entirely
+            var p2 = Frame(left: true, jh: true);
+            var e = ControlMap.Route(map, p1, p2);
+            Assert.AreEqual(-1, e.moveDir);
+            Assert.IsFalse(e.jumpPressed);
+            Assert.IsTrue(e.jumpHeld);
+            Assert.IsFalse(e.dashPressed);
+        }
     }
 }

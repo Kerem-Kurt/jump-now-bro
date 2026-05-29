@@ -30,5 +30,21 @@ namespace JumpNowBro.Util
 
         private static InputOwner Flip(InputOwner o) =>
             o == InputOwner.P1 ? InputOwner.P2 : InputOwner.P1;
+
+        /// One-to-one extraction of the four reads PlayerController.FixedUpdate does today
+        /// (lines ~105–117): each action takes its bits from the owning player's frame; left+right cancels.
+        public static EffectiveInput Route(ControlMap map, PlayerInputFrame p1, PlayerInputFrame p2)
+        {
+            var moveFrame = map.moveOwner == InputOwner.P1 ? p1 : p2;
+            var jumpFrame = map.jumpOwner == InputOwner.P1 ? p1 : p2;
+            var dashFrame = map.dashOwner == InputOwner.P1 ? p1 : p2;
+            return new EffectiveInput
+            {
+                moveDir     = (moveFrame.moveRight ? 1 : 0) - (moveFrame.moveLeft ? 1 : 0),
+                jumpPressed = jumpFrame.jumpPressed,
+                jumpHeld    = jumpFrame.jumpHeld,
+                dashPressed = dashFrame.dashPressed,
+            };
+        }
     }
 }
