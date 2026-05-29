@@ -22,6 +22,10 @@ namespace JumpNowBro.Gameplay
             (currentLevelIndex >= 0 && currentLevelIndex < levelSceneNames.Length)
                 ? levelSceneNames[currentLevelIndex] : null;
 
+        /// True while LoadLevelRoutine is running. NetworkStateBroadcaster suppresses STATE during the
+        /// async unload/load so a stale-sceneIndex STATE doesn't race the LEVEL_LOAD EVENT (#76).
+        public bool IsLoading { get; private set; }
+
         void Awake()
         {
             if (Instance != null && Instance != this)
@@ -79,24 +83,32 @@ namespace JumpNowBro.Gameplay
 
         IEnumerator LoadLevelRoutine(string sceneName)
         {
-            if (!string.IsNullOrEmpty(currentlyLoadedScene))
+            IsLoading = true;
+            try
             {
-                var unload = SceneManager.UnloadSceneAsync(currentlyLoadedScene);
-                if (unload != null) yield return unload;
-            }
+                if (!string.IsNullOrEmpty(currentlyLoadedScene))
+                {
+                    var unload = SceneManager.UnloadSceneAsync(currentlyLoadedScene);
+                    if (unload != null) yield return unload;
+                }
 
-            var load = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
-            if (load == null)
+                var load = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Additive);
+                if (load == null)
+                {
+                    Debug.LogError($"LevelManager: scene '{sceneName}' not in Build Settings.", this);
+                    yield break;
+                }
+                yield return load;
+
+                currentlyLoadedScene = sceneName;
+
+                if (ControlMapStore.Instance != null)
+                    ControlMapStore.Instance.Apply(ControlMap.Default);
+            }
+            finally
             {
-                Debug.LogError($"LevelManager: scene '{sceneName}' not in Build Settings.", this);
-                yield break;
+                IsLoading = false;
             }
-            yield return load;
-
-            currentlyLoadedScene = sceneName;
-
-            if (ControlMapStore.Instance != null)
-                ControlMapStore.Instance.Apply(ControlMap.Default);
         }
     }
 }

@@ -10,8 +10,11 @@ namespace JumpNowBro.Networking
     /// and builds the wire. Client lifecycle lands in the client-lifecycle issue. SinglePlayer is inert
     /// — the game runs from Bootstrap exactly as today.
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(-100)]                                         // Awake before PlayerSpawner reads Instance.Role (#78 wiring)
     public sealed class NetworkManager : MonoBehaviour
     {
+        public static NetworkManager Instance { get; private set; }
+
         [SerializeField] GameRole startupRole = GameRole.SinglePlayer;
         [SerializeField] ushort gameplayPort = 7777;
         [SerializeField] string manualHostIp = "127.0.0.1";
@@ -21,6 +24,8 @@ namespace JumpNowBro.Networking
         public GameRole Role { get; private set; }
         public Session.SessionState? CurrentSessionState => session?.State;
         public float CurrentRtt => session?.RttSeconds ?? 0f;
+        /// Exposed so the #78 spawner can hand the live transport to broadcasters/senders/receivers.
+        public IReliableTransport CurrentTransport => transport;
 
         UdpSocket gameplaySocket;
         #pragma warning disable 0649   // wired later by a lag-sim toggle; null until then
@@ -28,11 +33,14 @@ namespace JumpNowBro.Networking
         #pragma warning restore 0649
         DiscoveryService discovery;
         Session session;
+        UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
         double clock;
 
         void Awake()
         {
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            Instance = this;
             Role = startupRole;
             if (Role == GameRole.SinglePlayer) return;
             Application.runInBackground = true;                           // keep ticking while unfocused so PINGs flow between editors (else the 5s liveness fires)
@@ -69,6 +77,7 @@ namespace JumpNowBro.Networking
             }
             discovery?.Dispose();
             gameplaySocket?.Dispose();                                    // kills the background receive thread on play-stop
+            if (Instance == this) Instance = null;
         }
 
         // ---- host lifecycle ----
@@ -109,7 +118,7 @@ namespace JumpNowBro.Networking
         {
             var ch = new UdpDatagramChannel(gameplaySocket, peer);
             ch.PreSeed(helloDatagram);                                    // transport processes the validated HELLO immediately
-            var transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);   // ~5 Hz keepalive — v1.2's only traffic
+            transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);      // ~5 Hz keepalive — v1.2's only traffic until #76's Established hook flips to 1 Hz
             // Providers sampled at WELCOME-send time so currentSceneIndex reflects the actual scene
             // the host is on (mid-game join case); 0xFF sentinel means "no level loaded yet".
             session = new Session(transport, isHost: true,
@@ -131,7 +140,7 @@ namespace JumpNowBro.Networking
             discovery = DiscoveryService.StartClient(discoveryPort);      // host list builds for the connection UI
             var host = new IPEndPoint(IPAddress.Parse(manualHostIp), gameplayPort);
             var ch = new UdpDatagramChannel(gameplaySocket, host);
-            var transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
+            transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
             session = new Session(transport, isHost: false);
             session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
             session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on
@@ -143,13 +152,15 @@ namespace JumpNowBro.Networking
         void OnSessionStateChanged(Session.SessionState state)
         {
             Debug.Log($"[{Role}] Session: {state}");                      // visibility until ConnectionUI surfaces this
-            if (state == Session.SessionState.Established && Role == GameRole.Hosting)
+            if (state == Session.SessionState.Established)
             {
-                if (LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex < 0)
+                transport?.SetPingInterval(1.0);                          // INPUT/STATE keep liveness warm — restore DESIGN §8 PING cadence
+                if (Role == GameRole.Hosting && LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex < 0)
                     LevelManager.Instance.LoadFirst();                    // initial-join: host starts the game once the wire is up
             }
             if (state != Session.SessionState.Disconnected) return;
             session = null;
+            transport = null;
             if (Role == GameRole.Hosting) listening = true;               // re-arm for a fresh client; client just nulls
         }
 
@@ -195,6 +206,7 @@ namespace JumpNowBro.Networking
             var s = session;
             if (s != null) { s.SendGoodbye(GoodbyeReason.Normal); s.Tick(0); }
             session = null;
+            transport = null;
             discovery?.Dispose(); discovery = null;
             gameplaySocket?.Dispose(); gameplaySocket = null;
             listening = false;

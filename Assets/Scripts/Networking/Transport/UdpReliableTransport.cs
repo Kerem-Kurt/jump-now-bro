@@ -19,7 +19,7 @@ namespace JumpNowBro.Networking
         readonly RttEstimator rtt = new RttEstimator();
         readonly Queue<(MessageType type, byte[] payload)> inbox = new Queue<(MessageType, byte[])>();
         readonly byte[] scratch = new byte[MaxDatagram];
-        readonly double pingInterval;                   // keepalive cadence (v1.2 runs it fast — PING is the only traffic)
+        double pingInterval;                            // keepalive cadence — v1.2 runs fast (PING only traffic); v1.4 restores 1 Hz once INPUT/STATE flow
         readonly double silenceTimeout;                 // peer-silence → OnDisconnected
 
         ushort nextPacketSeq = 1;                      // 0 reserved; stamps every datagram, drives unreliable latest-wins
@@ -43,6 +43,10 @@ namespace JumpNowBro.Networking
         public int PendingReliableCount => sendQueue.PendingCount;   // for tests/diagnostics; not on the interface
         public event Action OnConnected;
         public event Action OnDisconnected;
+
+        /// Update PING cadence at runtime. v1.2 ran at 0.2 s because PING was the only traffic; v1.4
+        /// flips this back to 1.0 s on Session.Established (#76) — INPUT/STATE now keep liveness warm.
+        public void SetPingInterval(double seconds) => pingInterval = seconds > 0 ? seconds : pingInterval;
 
         public void Send(Channel ch, MessageType type, ReadOnlySpan<byte> payload)
         {

@@ -32,6 +32,13 @@ namespace JumpNowBro.Gameplay
 
         public event System.Action<int> OnDeath;
         public event System.Action OnDash;
+        /// Fired at end of FixedUpdate (after MovePosition) with (hostTick, post-step state) so the v1.4
+        /// NetworkStateBroadcaster can sample at the exact moment authoritative state is settled.
+        public event System.Action<uint, MovementState> OnSimStepCompleted;
+
+        /// The host's local-keyboard PlayerInputFrame this tick — carried in STATE so the v1.5 client
+        /// predictor can dead-reckon host-owned actions between snapshots.
+        public PlayerInputFrame LastHostInputFrame { get; private set; }
 
         public void ResetDeathCount() => DeathCount = 0;
 
@@ -87,6 +94,7 @@ namespace JumpNowBro.Gameplay
 
             var f1 = ReadFrame(p1);
             var f2 = ReadFrame(p2);
+            LastHostInputFrame = f1;                                                 // host=P1 convention; broadcaster reads this for STATE.remoteInputFrame
             var map = ControlMapStore.Instance != null ? ControlMapStore.Instance.Current : ControlMap.Default;
             var input = ControlMap.Route(map, f1, f2);
 
@@ -111,6 +119,11 @@ namespace JumpNowBro.Gameplay
 
             p1.Tick();
             p2.Tick();
+
+            // Broadcaster subscribes in Awake (Finding #9); event fires AFTER MovePosition so the state
+            // sample reflects the authoritative post-step pose.
+            uint hostTick = TickClock.Instance != null ? TickClock.Instance.Current : 0u;
+            OnSimStepCompleted?.Invoke(hostTick, newState);
         }
 
         static PlayerInputFrame ReadFrame(IInputSource s) =>
