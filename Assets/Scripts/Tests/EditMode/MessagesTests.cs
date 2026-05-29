@@ -1,0 +1,295 @@
+using System;
+using NUnit.Framework;
+using JumpNowBro.Networking;
+using JumpNowBro.Util;
+
+namespace JumpNowBro.Tests
+{
+    public class MessagesTests
+    {
+        // ---------- PlayerInputFrame ----------
+
+        [Test]
+        public void PlayerInputFrame_AllFlags_RoundTrip()
+        {
+            var f = new PlayerInputFrame
+            {
+                moveLeft    = true,
+                moveRight   = true,
+                jumpPressed = true,
+                jumpHeld    = true,
+                dashPressed = true,
+            };
+            var roundtrip = PlayerInputFrame.Unpack(PlayerInputFrame.Pack(f));
+            Assert.AreEqual(f.moveLeft,    roundtrip.moveLeft);
+            Assert.AreEqual(f.moveRight,   roundtrip.moveRight);
+            Assert.AreEqual(f.jumpPressed, roundtrip.jumpPressed);
+            Assert.AreEqual(f.jumpHeld,    roundtrip.jumpHeld);
+            Assert.AreEqual(f.dashPressed, roundtrip.dashPressed);
+        }
+
+        [Test]
+        public void PlayerInputFrame_EmptyFrame_PacksAsZero()
+        {
+            Assert.AreEqual(0, PlayerInputFrame.Pack(default));
+        }
+
+        [Test]
+        public void PlayerInputFrame_ReservedBitsIgnored_OnUnpack()
+        {
+            // Bits 5–7 are reserved; setting them must NOT influence the decoded flags.
+            byte packed = (byte)(0b11100000 | (1 << 2));   // jumpPressed + all reserved bits
+            var f = PlayerInputFrame.Unpack(packed);
+            Assert.IsFalse(f.moveLeft);
+            Assert.IsTrue(f.jumpPressed);
+        }
+
+        [Test]
+        public void PlayerInputFrame_EveryBytePattern_IsValid()
+        {
+            for (int i = 0; i < 256; i++)
+            {
+                var f = PlayerInputFrame.Unpack((byte)i);
+                // Re-pack and assert only the low 5 bits survive (reserved drop to zero).
+                Assert.AreEqual((byte)(i & 0x1F), PlayerInputFrame.Pack(f), $"byte {i:X2}");
+            }
+        }
+
+        // ---------- ControlMap ----------
+
+        [Test]
+        public void ControlMap_Default_RoundTrips()
+        {
+            var buf = new byte[ControlMap.PackedSize];
+            int n = ControlMap.Pack(ControlMap.Default, buf);
+            Assert.AreEqual(ControlMap.PackedSize, n);
+            Assert.IsTrue(ControlMap.TryUnpack(buf, out var map));
+            Assert.AreEqual(InputOwner.P1, map.moveOwner);
+            Assert.AreEqual(InputOwner.P1, map.jumpOwner);
+            Assert.AreEqual(InputOwner.P1, map.dashOwner);
+        }
+
+        [Test]
+        public void ControlMap_Swapped_RoundTrips()
+        {
+            var swapped = ControlMap.WithSwap(ControlMap.Default, PlayerAction.Jump);
+            var buf = new byte[ControlMap.PackedSize];
+            ControlMap.Pack(swapped, buf);
+            Assert.IsTrue(ControlMap.TryUnpack(buf, out var map));
+            Assert.AreEqual(InputOwner.P1, map.moveOwner);
+            Assert.AreEqual(InputOwner.P2, map.jumpOwner);
+            Assert.AreEqual(InputOwner.P1, map.dashOwner);
+        }
+
+        [Test]
+        public void ControlMap_OutOfRangeOwnerByte_RejectedAsMalformed()
+        {
+            Assert.IsFalse(ControlMap.TryUnpack(new byte[] { 0, 0, 7 }, out _));   // 7 not in {P1=0, P2=1}
+        }
+
+        [Test]
+        public void ControlMap_TruncatedBuffer_Rejected()
+        {
+            Assert.IsFalse(ControlMap.TryUnpack(new byte[] { 0, 1 }, out _));      // need 3, got 2
+        }
+
+        // ---------- MovementState ----------
+
+        static MovementState SampleState() => new MovementState
+        {
+            posX = 12.5f, posY = -3.25f, velX = 9f, velY = -16f,
+            state = MoveState.Dashing, facing = -1,
+            coyoteTimer = 0.08f, jumpBufferTimer = 0.0f, dashTimer = 0.12f, invulnTimer = 0.05f,
+            freezeTicksRemaining = 3,
+            dashChargeAvailable = false, wasJumpHeld = true, isDead = false,
+        };
+
+        [Test]
+        public void MovementState_RoundTrip()
+        {
+            var s = SampleState();
+            var buf = new byte[MovementState.PackedSize];
+            int n = MovementState.Pack(s, buf);
+            Assert.AreEqual(MovementState.PackedSize, n);
+            Assert.IsTrue(MovementState.TryUnpack(buf, out var rt));
+            Assert.AreEqual(s.posX, rt.posX);
+            Assert.AreEqual(s.posY, rt.posY);
+            Assert.AreEqual(s.velX, rt.velX);
+            Assert.AreEqual(s.velY, rt.velY);
+            Assert.AreEqual(s.state, rt.state);
+            Assert.AreEqual(s.facing, rt.facing);
+            Assert.AreEqual(s.coyoteTimer, rt.coyoteTimer);
+            Assert.AreEqual(s.jumpBufferTimer, rt.jumpBufferTimer);
+            Assert.AreEqual(s.dashTimer, rt.dashTimer);
+            Assert.AreEqual(s.invulnTimer, rt.invulnTimer);
+            Assert.AreEqual(s.freezeTicksRemaining, rt.freezeTicksRemaining);
+            Assert.AreEqual(s.dashChargeAvailable, rt.dashChargeAvailable);
+            Assert.AreEqual(s.wasJumpHeld, rt.wasJumpHeld);
+            Assert.AreEqual(s.isDead, rt.isDead);
+        }
+
+        [Test]
+        public void MovementState_AllFlags_RoundTrip()
+        {
+            var s = new MovementState
+            {
+                dashChargeAvailable = true, wasJumpHeld = true, isDead = true,
+                facing = 1, state = MoveState.Grounded,
+            };
+            var buf = new byte[MovementState.PackedSize];
+            MovementState.Pack(s, buf);
+            Assert.IsTrue(MovementState.TryUnpack(buf, out var rt));
+            Assert.IsTrue(rt.dashChargeAvailable);
+            Assert.IsTrue(rt.wasJumpHeld);
+            Assert.IsTrue(rt.isDead);
+        }
+
+        [Test]
+        public void MovementState_TruncatedBelowMin_Rejected()
+        {
+            Assert.IsFalse(MovementState.TryUnpack(new byte[MovementState.MinPackedSize - 1], out _));
+        }
+
+        [Test]
+        public void MovementState_AcceptsExactMinSize_PaddingMissing()
+        {
+            // Padding-tolerant reader: 36 bytes is the lower bound; trailing 10 zeros are optional.
+            var s = SampleState();
+            var full = new byte[MovementState.PackedSize];
+            MovementState.Pack(s, full);
+            var trimmed = full.AsSpan(0, MovementState.MinPackedSize);
+            Assert.IsTrue(MovementState.TryUnpack(trimmed, out var rt));
+            Assert.AreEqual(s.posX, rt.posX);
+            Assert.AreEqual(s.isDead, rt.isDead);
+        }
+
+        // ---------- InputBody ----------
+
+        [Test]
+        public void InputBody_RoundTrip()
+        {
+            var frames = new byte[] {
+                PlayerInputFrame.Pack(new PlayerInputFrame { jumpPressed = true }),
+                PlayerInputFrame.Pack(new PlayerInputFrame { jumpHeld    = true }),
+                PlayerInputFrame.Pack(new PlayerInputFrame { dashPressed = true }),
+                PlayerInputFrame.Pack(new PlayerInputFrame { moveRight   = true }),
+                PlayerInputFrame.Pack(new PlayerInputFrame { moveLeft    = true }),
+                PlayerInputFrame.Pack(new PlayerInputFrame()),                       // all-zero
+            };
+            var buf = new byte[InputBody.HeaderSize + frames.Length];
+            int n = InputBody.Write(buf, baseTick: 42u, frames);
+            Assert.AreEqual(buf.Length, n);
+
+            Assert.IsTrue(InputBody.TryRead(buf, out var baseTick, out var count, out var read));
+            Assert.AreEqual(42u, baseTick);
+            Assert.AreEqual(6, count);
+            Assert.AreEqual(frames, read.ToArray());
+        }
+
+        [Test]
+        public void InputBody_CountOutOfRange_OnRead_Rejected()
+        {
+            // Construct a packet that says count = 17 (> MaxFrameCount = 16).
+            var bad = new byte[] { 0, 0, 0, 0, 17, /* … */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+            Assert.IsFalse(InputBody.TryRead(bad, out _, out _, out _));
+        }
+
+        [Test]
+        public void InputBody_CountZero_OnWrite_Throws()
+        {
+            Assert.Throws<ArgumentException>(() => InputBody.Write(new byte[5], 0u, ReadOnlySpan<byte>.Empty));
+        }
+
+        [Test]
+        public void InputBody_TruncatedFrames_Rejected()
+        {
+            // header says count=4, but only 2 frame bytes follow
+            var bad = new byte[] { 0, 0, 0, 5, 4, 0xAA, 0xBB };
+            Assert.IsFalse(InputBody.TryRead(bad, out _, out _, out _));
+        }
+
+        // ---------- StateBody ----------
+
+        [Test]
+        public void StateBody_RoundTrip()
+        {
+            var body = new StateBody
+            {
+                snapshotTick           = 1_000_000u,
+                lastConsumedClientTick = 999_980u,
+                deathCount             = 7,
+                sceneIndex             = 2,
+                controlMap             = ControlMap.WithSwap(ControlMap.Default, PlayerAction.Dash),
+                remoteInputFrame       = new PlayerInputFrame { jumpHeld = true, moveRight = true },
+                movementState          = SampleState(),
+            };
+            var buf = new byte[StateBody.Size];
+            int n = body.Write(buf);
+            Assert.AreEqual(StateBody.Size, n);
+
+            Assert.IsTrue(StateBody.TryRead(buf, out var rt));
+            Assert.AreEqual(body.snapshotTick, rt.snapshotTick);
+            Assert.AreEqual(body.lastConsumedClientTick, rt.lastConsumedClientTick);
+            Assert.AreEqual(body.deathCount, rt.deathCount);
+            Assert.AreEqual(body.sceneIndex, rt.sceneIndex);
+            Assert.AreEqual(InputOwner.P1, rt.controlMap.moveOwner);
+            Assert.AreEqual(InputOwner.P1, rt.controlMap.jumpOwner);
+            Assert.AreEqual(InputOwner.P2, rt.controlMap.dashOwner);
+            Assert.IsTrue(rt.remoteInputFrame.jumpHeld);
+            Assert.IsTrue(rt.remoteInputFrame.moveRight);
+            Assert.AreEqual(body.movementState.posX, rt.movementState.posX);
+            Assert.AreEqual(body.movementState.facing, rt.movementState.facing);
+        }
+
+        [Test]
+        public void StateBody_TruncatedBuffer_Rejected()
+        {
+            // Anything below MinPackedSize MovementState (36) plus the 15-byte prefix is malformed.
+            Assert.IsFalse(StateBody.TryRead(new byte[15 + MovementState.MinPackedSize - 1], out _));
+        }
+
+        [Test]
+        public void StateBody_MalformedControlMap_Rejected()
+        {
+            // sceneIndex byte (offset 10) is fine, controlMap byte at offset 11 is 9 (out of range).
+            var buf = new byte[StateBody.Size];
+            buf[11] = 9;                                     // moveOwner = 9 -> reject
+            Assert.IsFalse(StateBody.TryRead(buf, out _));
+        }
+
+        // ---------- EventBody ----------
+
+        [Test]
+        public void EventBody_LevelLoad_RoundTrip()
+        {
+            var body = new EventBody { kind = EventKind.LevelLoad, sceneIndex = 2 };
+            var buf = new byte[EventBody.Size];
+            int n = body.Write(buf);
+            Assert.AreEqual(EventBody.Size, n);
+            Assert.IsTrue(EventBody.TryRead(buf, out var rt));
+            Assert.AreEqual(EventKind.LevelLoad, rt.kind);
+            Assert.AreEqual(2, rt.sceneIndex);
+        }
+
+        [Test]
+        public void EventBody_UnknownKind_Rejected()
+        {
+            // Kind = 99: outside enum range entirely.
+            Assert.IsFalse(EventBody.TryRead(new byte[] { 99, 0 }, out _));
+        }
+
+        [Test]
+        public void EventBody_ReservedKindsNotYetSupported_Rejected()
+        {
+            // v1.4 only supports LevelLoad; Swap (1) and Death (2) are reserved for v1.6.
+            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Swap, 0 }, out _));
+            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Death, 0 }, out _));
+        }
+
+        [Test]
+        public void EventBody_TruncatedBuffer_Rejected()
+        {
+            Assert.IsFalse(EventBody.TryRead(new byte[1] { (byte)EventKind.LevelLoad }, out _));
+        }
+    }
+}

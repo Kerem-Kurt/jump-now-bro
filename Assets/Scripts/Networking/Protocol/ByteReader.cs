@@ -45,6 +45,20 @@ namespace JumpNowBro.Networking
             return true;
         }
 
+        public bool TryReadSByte(out sbyte v)
+        {
+            if (!TryReadByte(out byte b)) { v = 0; return false; }
+            v = (sbyte)b;
+            return true;
+        }
+
+        public bool TryReadFloat(out float v)
+        {
+            if (!TryReadUInt(out uint u)) { v = 0; return false; }
+            v = BitConverter.Int32BitsToSingle((int)u);
+            return true;
+        }
+
         public bool TryReadBytes(int count, out ReadOnlySpan<byte> v)
         {
             if (count < 0 || Remaining < count) { v = default; return false; }

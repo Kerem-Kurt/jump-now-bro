@@ -31,6 +31,29 @@ namespace JumpNowBro.Util
         private static InputOwner Flip(InputOwner o) =>
             o == InputOwner.P1 ? InputOwner.P2 : InputOwner.P1;
 
+        public const int PackedSize = 3;
+
+        /// 3 bytes on the wire: moveOwner | jumpOwner | dashOwner, each a u8 InputOwner. Reader rejects
+        /// out-of-range enum bytes — a malformed STATE shouldn't conjure a fake P3.
+        public static int Pack(in ControlMap map, System.Span<byte> dst)
+        {
+            dst[0] = (byte)map.moveOwner;
+            dst[1] = (byte)map.jumpOwner;
+            dst[2] = (byte)map.dashOwner;
+            return PackedSize;
+        }
+
+        public static bool TryUnpack(System.ReadOnlySpan<byte> src, out ControlMap map)
+        {
+            map = default;
+            if (src.Length < PackedSize) return false;
+            if (src[0] > 1 || src[1] > 1 || src[2] > 1) return false;
+            map.moveOwner = (InputOwner)src[0];
+            map.jumpOwner = (InputOwner)src[1];
+            map.dashOwner = (InputOwner)src[2];
+            return true;
+        }
+
         /// One-to-one extraction of the four reads PlayerController.FixedUpdate does today
         /// (lines ~105–117): each action takes its bits from the owning player's frame; left+right cancels.
         public static EffectiveInput Route(ControlMap map, PlayerInputFrame p1, PlayerInputFrame p2)

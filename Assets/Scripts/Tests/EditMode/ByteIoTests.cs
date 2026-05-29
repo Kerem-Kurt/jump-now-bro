@@ -80,5 +80,58 @@ namespace JumpNowBro.Tests
             Assert.IsTrue(r.TryReadString(out var s));
             Assert.AreEqual("", s);
         }
+
+        [Test]
+        public void SByte_RoundTrips()
+        {
+            var buf = new byte[3];
+            var w = new ByteWriter(buf);
+            w.WriteSByte(sbyte.MinValue);
+            w.WriteSByte(0);
+            w.WriteSByte(sbyte.MaxValue);
+            var r = new ByteReader(buf);
+            Assert.IsTrue(r.TryReadSByte(out var a)); Assert.AreEqual(sbyte.MinValue, a);
+            Assert.IsTrue(r.TryReadSByte(out var b)); Assert.AreEqual(0, b);
+            Assert.IsTrue(r.TryReadSByte(out var c)); Assert.AreEqual(sbyte.MaxValue, c);
+            Assert.IsFalse(r.TryReadSByte(out _));
+        }
+
+        [TestCase(0f)]
+        [TestCase(1f)]
+        [TestCase(-1f)]
+        [TestCase(3.14159265f)]
+        [TestCase(float.MinValue)]
+        [TestCase(float.MaxValue)]
+        [TestCase(float.Epsilon)]
+        [TestCase(float.PositiveInfinity)]
+        [TestCase(float.NegativeInfinity)]
+        public void Float_RoundTrips_BitExact(float v)
+        {
+            var buf = new byte[4];
+            new ByteWriter(buf).WriteFloat(v);
+            Assert.IsTrue(new ByteReader(buf).TryReadFloat(out var roundtrip));
+            Assert.AreEqual(v, roundtrip);
+        }
+
+        [Test]
+        public void Float_NaN_RoundTrips_BitExact()
+        {
+            // NaN != NaN, so compare bit pattern explicitly.
+            var buf = new byte[4];
+            new ByteWriter(buf).WriteFloat(float.NaN);
+            Assert.IsTrue(new ByteReader(buf).TryReadFloat(out var v));
+            Assert.AreEqual(
+                System.BitConverter.SingleToInt32Bits(float.NaN),
+                System.BitConverter.SingleToInt32Bits(v));
+        }
+
+        [Test]
+        public void Float_BigEndianByteOrder()
+        {
+            // 1.0f is 0x3F800000 — write should emit { 0x3F, 0x80, 0x00, 0x00 }.
+            var buf = new byte[4];
+            new ByteWriter(buf).WriteFloat(1.0f);
+            Assert.AreEqual(new byte[] { 0x3F, 0x80, 0x00, 0x00 }, buf);
+        }
     }
 }

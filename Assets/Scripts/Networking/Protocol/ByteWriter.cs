@@ -35,11 +35,27 @@ namespace JumpNowBro.Networking
 
         public void WriteInt(int v) => WriteUInt((uint)v);
 
+        public void WriteSByte(sbyte v) => WriteByte((byte)v);
+
+        // Float bits go on the wire as a big-endian uint so endianness matches the rest of the header
+        // convention (BitConverter is platform-dependent; this isn't).
+        public void WriteFloat(float v) => WriteUInt((uint)BitConverter.SingleToInt32Bits(v));
+
         public void WriteBytes(ReadOnlySpan<byte> src)
         {
             Need(src.Length);
             src.CopyTo(buf.Slice(Position));
             Position += src.Length;
+        }
+
+        /// Hand the caller a slice and advance — lets sub-codecs (`ControlMap.Pack`, `MovementState.Pack`)
+        /// write directly into the writer's buffer without a stackalloc round trip.
+        public Span<byte> Reserve(int n)
+        {
+            Need(n);
+            var slice = buf.Slice(Position, n);
+            Position += n;
+            return slice;
         }
 
         public void WriteString(string s)
