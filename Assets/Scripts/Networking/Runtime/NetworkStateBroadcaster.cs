@@ -17,7 +17,6 @@ namespace JumpNowBro.Networking
     public sealed class NetworkStateBroadcaster : MonoBehaviour
     {
         PlayerController controller;
-        IReliableTransport transport;
         ControlMapStore store;
         LevelManager levelManager;
         Func<uint> lastConsumedClientTickGetter;
@@ -35,13 +34,13 @@ namespace JumpNowBro.Networking
             if (controller != null) controller.OnSimStepCompleted -= Handle;
         }
 
-        /// Called by the role-aware spawner (#78). Bind happens AFTER Awake's self-subscription, so the
-        /// event is wired even if the first FixedUpdate beats Bind to the punch — Handle just no-ops on
-        /// missing transport.
-        public void Bind(IReliableTransport transport, ControlMapStore store, LevelManager levelManager,
+        /// Called by the role-aware spawner (#78). Note: the transport is NOT cached — it's read dynamically
+        /// from NetworkManager.Instance.CurrentTransport on every Handle, so a client-rejoin (which creates
+        /// a new transport via LatchPeer without re-spawning the host's Player) automatically picks up the
+        /// new endpoint. A cached reference would keep sending to the disconnected previous client.
+        public void Bind(ControlMapStore store, LevelManager levelManager,
                          Func<uint> lastConsumedClientTickGetter)
         {
-            this.transport = transport;
             this.store = store;
             this.levelManager = levelManager;
             this.lastConsumedClientTickGetter = lastConsumedClientTickGetter;
@@ -50,9 +49,12 @@ namespace JumpNowBro.Networking
 
         void Handle(uint hostTick, MovementState state)
         {
-            if (!transportAlive || transport == null) return;
-            var role = NetworkManager.Instance != null ? NetworkManager.Instance.Role : GameRole.SinglePlayer;
-            if (role != GameRole.Hosting) return;                                  // defense in depth: only host broadcasts
+            if (!transportAlive) return;
+            var nm = NetworkManager.Instance;
+            if (nm == null) return;
+            if (nm.Role != GameRole.Hosting) return;                                 // defense in depth: only host broadcasts
+            var transport = nm.CurrentTransport;                                     // read fresh: client rejoin swaps transport without re-Binding the broadcaster
+            if (transport == null) return;
             bool isLoading = levelManager != null && levelManager.IsLoading;
             if (!StateBroadcastTiming.ShouldBroadcast(hostTick, isLoading)) return;
 

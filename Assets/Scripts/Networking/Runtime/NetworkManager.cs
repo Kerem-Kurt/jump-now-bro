@@ -217,7 +217,9 @@ namespace JumpNowBro.Networking
             if (ctrl != null) ctrl.Inject(keyP1, currentHostRemote);
 
             var bcast = instance.AddComponent<NetworkStateBroadcaster>();
-            bcast.Bind(transport, ControlMapStore.Instance, LevelManager.Instance,
+            // Note: transport intentionally NOT passed — broadcaster reads NetworkManager.CurrentTransport
+            // dynamically so a client-rejoin (new transport, same host Player) auto-picks up the new endpoint.
+            bcast.Bind(ControlMapStore.Instance, LevelManager.Instance,
                        () => currentHostRemote != null ? currentHostRemote.LastConsumedClientTick : 0u);
         }
 
