@@ -4,8 +4,6 @@ using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
-    public enum MoveState { Grounded, Jumping, Falling, Dashing }
-
     [RequireComponent(typeof(Rigidbody2D))]
     public class PlayerController : MonoBehaviour
     {
