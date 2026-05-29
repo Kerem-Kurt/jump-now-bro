@@ -136,6 +136,28 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
+        public void OnGameplayMessage_FiresForNonHandshakeTypes()
+        {
+            // Drive a STATE-typed unreliable payload through to a non-handshake-handling Session;
+            // confirm OnGameplayMessage fires with the right type + payload bytes preserved.
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+            var hostT = new UdpReliableTransport(cb);
+
+            MessageType seenType = MessageType.Hello;
+            byte[] seenPayload = null;
+            client.OnGameplayMessage += (t, p) => { seenType = t; seenPayload = p; };
+
+            client.Start();                                  // sends HELLO; we don't care about handshake completing here
+            var stateBody = new byte[] { 0xAA, 0xBB, 0xCC };
+            hostT.Send(Channel.Unreliable, MessageType.State, stateBody);
+            for (int i = 0; i < 10; i++) { hostT.Tick(0.05f); client.Tick(0.05f); }
+
+            Assert.AreEqual(MessageType.State, seenType);
+            Assert.AreEqual(stateBody, seenPayload);
+        }
+
+        [Test]
         public void Goodbye_DisconnectsBothEnds()
         {
             var (ca, cb) = InMemoryDatagramChannel.Pair();

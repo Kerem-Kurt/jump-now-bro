@@ -10,18 +10,19 @@ namespace JumpNowBro.Gameplay
         [SerializeField] TMP_Text deathLabel;
         [SerializeField] PlayerSpawner playerSpawner;
 
-        PlayerController currentPlayer;
-
         void OnEnable()
         {
             if (playerSpawner != null) playerSpawner.OnPlayerSpawned += HandlePlayerSpawned;
+            // Single death source on every role — Host/SinglePlayer feed it via PlayerController.OnDeath;
+            // Client feeds it via STATE.deathCount delta. HUD doesn't need to know which.
+            if (DeathNotifier.Instance != null) DeathNotifier.Instance.OnDeath += HandleDeath;
             SceneManager.sceneLoaded += HandleSceneLoaded;
         }
 
         void OnDisable()
         {
             if (playerSpawner != null) playerSpawner.OnPlayerSpawned -= HandlePlayerSpawned;
-            if (currentPlayer != null) currentPlayer.OnDeath -= HandleDeath;
+            if (DeathNotifier.Instance != null) DeathNotifier.Instance.OnDeath -= HandleDeath;
             SceneManager.sceneLoaded -= HandleSceneLoaded;
         }
 
@@ -33,9 +34,6 @@ namespace JumpNowBro.Gameplay
 
         void HandlePlayerSpawned(PlayerController player)
         {
-            if (currentPlayer != null) currentPlayer.OnDeath -= HandleDeath;
-            currentPlayer = player;
-            if (currentPlayer != null) currentPlayer.OnDeath += HandleDeath;
             UpdateDeathLabel(player != null ? player.DeathCount : 0);
         }
 

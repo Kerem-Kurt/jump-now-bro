@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using UnityEngine;
 using JumpNowBro.Gameplay;
@@ -36,6 +37,16 @@ namespace JumpNowBro.Networking
         UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
         double clock;
+
+        // Gameplay-message dispatch — Session.OnGameplayMessage forwards INPUT/STATE/EVENT here;
+        // #77 (renderer/receiver) and #78 (host input) register handlers via SetStateHandler etc.
+        Action<byte[]> stateHandler;
+        Action<byte[]> eventHandler;
+        Action<byte[]> inputHandler;
+
+        public void SetStateHandler(Action<byte[]> h) => stateHandler = h;
+        public void SetEventHandler(Action<byte[]> h) => eventHandler = h;
+        public void SetInputHandler(Action<byte[]> h) => inputHandler = h;
 
         void Awake()
         {
@@ -128,6 +139,7 @@ namespace JumpNowBro.Networking
                 },
                 hostTickProvider: () => TickClock.Instance != null ? TickClock.Instance.Current : 0u);
             session.OnStateChanged += OnSessionStateChanged;
+            session.OnGameplayMessage += OnGameplayMessageDispatch;
             session.Start();                                              // queues WELCOME; flushes on the next session.Tick
             listening = false;
         }
@@ -144,7 +156,19 @@ namespace JumpNowBro.Networking
             session = new Session(transport, isHost: false);
             session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
             session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on
+            session.OnGameplayMessage += OnGameplayMessageDispatch;
             session.Start();                                              // sends HELLO; awaits WELCOME
+        }
+
+        void OnGameplayMessageDispatch(MessageType type, byte[] payload)
+        {
+            switch (type)
+            {
+                case MessageType.State: stateHandler?.Invoke(payload); break;
+                case MessageType.Event: eventHandler?.Invoke(payload); break;
+                case MessageType.Input: inputHandler?.Invoke(payload); break;
+                // Ping/Pong are transport-internal — handled inside UdpReliableTransport, never bubble up here.
+            }
         }
 
         // ---- shared ----

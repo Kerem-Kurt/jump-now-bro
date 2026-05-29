@@ -30,6 +30,9 @@ namespace JumpNowBro.Networking
         public event Action<SessionState> OnStateChanged;
         /// Raised on the CLIENT after a valid WELCOME is parsed — carries scene index for mid-game join + peer slot confirmation.
         public event Action<Welcome> OnWelcomeReceived;
+        /// Raised for message types Session doesn't itself handle (INPUT/STATE/EVENT/PING/PONG bodies).
+        /// NetworkManager subscribes and routes to whichever gameplay consumer is registered.
+        public event Action<MessageType, byte[]> OnGameplayMessage;
 
         public Session(IReliableTransport transport, bool isHost,
                        Func<byte> sceneIndexProvider = null, Func<uint> hostTickProvider = null)
@@ -89,6 +92,10 @@ namespace JumpNowBro.Networking
                 case MessageType.Goodbye:
                     if (Goodbye.TryRead(payload, out var g)) LastGoodbye = g.Reason;
                     SetState(SessionState.Disconnected);
+                    break;
+
+                default:
+                    OnGameplayMessage?.Invoke(type, payload);             // INPUT/STATE/EVENT/PING/PONG — forward to NetworkManager dispatcher
                     break;
             }
         }

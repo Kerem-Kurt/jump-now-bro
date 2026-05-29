@@ -19,8 +19,24 @@ namespace JumpNowBro.Gameplay
         public int TotalDeaths => accumulatedDeaths + (currentPlayer != null ? currentPlayer.DeathCount : 0);
         public event Action<PlayerController> OnPlayerSpawned;
 
-        void OnEnable() => SceneManager.sceneLoaded += HandleSceneLoaded;
-        void OnDisable() => SceneManager.sceneLoaded -= HandleSceneLoaded;
+        void OnEnable()
+        {
+            SceneManager.sceneLoaded += HandleSceneLoaded;
+            if (DeathNotifier.Instance != null) DeathNotifier.Instance.OnDeath += HandleDeathFromNotifier;
+        }
+
+        void OnDisable()
+        {
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
+            if (DeathNotifier.Instance != null) DeathNotifier.Instance.OnDeath -= HandleDeathFromNotifier;
+        }
+
+        // Camera shake on every death — host's PlayerController fires it via HandlePlayerDeath -> Raise;
+        // client's ClientStateRenderer fires it on STATE.deathCount delta. Same path here either way.
+        void HandleDeathFromNotifier(int deathCount)
+        {
+            if (cameraFollow != null) cameraFollow.Shake();
+        }
 
         void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
@@ -55,10 +71,10 @@ namespace JumpNowBro.Gameplay
             OnPlayerSpawned?.Invoke(currentPlayer);
         }
 
-        void HandlePlayerDeath(int deathCount)
-        {
-            if (cameraFollow != null) cameraFollow.Shake();
-        }
+        // Bridge PlayerController.OnDeath -> DeathNotifier so all subscribers (HUD, camera) see deaths
+        // through a single source — same path the client takes via STATE-delta in ClientStateRenderer.
+        void HandlePlayerDeath(int deathCount) =>
+            DeathNotifier.Instance?.Raise(deathCount);
 
         PlayerSpawnPoint FindSpawnPointInScene(Scene scene)
         {

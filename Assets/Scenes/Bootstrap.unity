@@ -726,6 +726,7 @@ GameObject:
   - component: {fileID: 1565270711}
   - component: {fileID: 1565270712}
   - component: {fileID: 1565270713}
+  - component: {fileID: 1565270714}
   m_Layer: 0
   m_Name: Manager
   m_TagString: Untagged
@@ -878,6 +879,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b495bac928aa6401f8e2a60b0d7af6ab, type: 3}
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.TickClock
+  current: 0
+--- !u!114 &1565270714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1565270703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 128919e8c61f549408f4dad662397951, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.DeathNotifier
 --- !u!1 &1591425169
 GameObject:
   m_ObjectHideFlags: 0
