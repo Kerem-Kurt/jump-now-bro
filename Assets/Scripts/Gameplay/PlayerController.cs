@@ -52,10 +52,9 @@ namespace JumpNowBro.Gameplay
             isDead = true;
             DeathCount++;
             OnDeath?.Invoke(DeathCount);                                            // fires immediately so juice (camera shake, death-count UI) lands before respawn
-            rb.linearVelocity = Vector2.zero;
             yield return new WaitForSeconds(RespawnDelay);
-            rb.position = checkpointPosition;
-            rb.linearVelocity = Vector2.zero;
+            transform.position = checkpointPosition;                                // Kinematic teleport: transform.position + explicit SyncTransforms() so the
+            Physics2D.SyncTransforms();                                             // next FixedUpdate's cast queries see the new pose (m_AutoSyncTransforms=0).
             currentState = FreshSpawnState();
             if (ControlMapStore.Instance != null)
                 ControlMapStore.Instance.Apply(checkpointControlMap);
@@ -83,10 +82,8 @@ namespace JumpNowBro.Gameplay
 
             float dt = Time.fixedDeltaTime;
 
-            currentState.posX = rb.position.x;                                       // at #69 read pos AND vel from rb every tick — Box2D modifies vel
-            currentState.posY = rb.position.y;                                       // between ticks (contact response zeroes vel.y on landing, friction
-            currentState.velX = rb.linearVelocity.x;                                 // damps vel.x). v0.4-mvp's FixedUpdate read vel.y the same way. At #70
-            currentState.velY = rb.linearVelocity.y;                                 // (Kinematic) Movement.Step owns vel; this read drops out.
+            currentState.posX = rb.position.x;                                       // read live pos (DieRoutine teleport may have moved it); velocity is
+            currentState.posY = rb.position.y;                                       // owned by Movement.Step — no rb.linearVelocity read at #70.
 
             var f1 = ReadFrame(p1);
             var f2 = ReadFrame(p2);
@@ -95,8 +92,8 @@ namespace JumpNowBro.Gameplay
 
             var movementTuning = tuning.AsMovementTuning(dt, fallLimitY);            // rebuilt every tick so Inspector live-tune still works
 
-            // sweep:false at #69 — Dynamic body, Box2D still handles collision blocking. #70 flips to sweep:true.
-            var (newState, edges) = Movement.Step(currentState, input, movementTuning, dt, collisionWorld, sweep: false);
+            // sweep:true at #70 — body is Kinematic; Movement.Step's swept position is authoritative.
+            var (newState, edges) = Movement.Step(currentState, input, movementTuning, dt, collisionWorld);
 
             if ((edges & EdgeFlags.DiedThisTick) != 0)                               // fall-limit → Die() routes through the existing 0.4s respawn coroutine
             {
@@ -106,7 +103,11 @@ namespace JumpNowBro.Gameplay
             if ((edges & EdgeFlags.DashedThisTick) != 0) OnDash?.Invoke();
 
             currentState = newState;
-            rb.linearVelocity = new Vector2(newState.velX, newState.velY);
+            rb.MovePosition(new Vector2(newState.posX, newState.posY));              // Kinematic body — MovePosition is the only mover. The earlier "also set
+                                                                                     // linearVelocity for trigger detection" pattern conflicts with MovePosition's
+                                                                                     // internal velocity computation and stalls the body. UFKC=1 + MovePosition +
+                                                                                     // moving Kinematic body is sufficient for OnTriggerEnter2D vs static triggers.
+                                                                                     // Hard-snap (DieRoutine, v1.5 CSP correction) uses transform.position + SyncTransforms.
 
             p1.Tick();
             p2.Tick();
