@@ -225,8 +225,12 @@ namespace JumpNowBro.Networking
 
         void WireClient(GameObject instance)
         {
-            // Client doesn't simulate — Movement.Step never runs; PlayerController + P1 keyboard go away.
-            var ctrl  = instance.GetComponent<PlayerController>();
+            // Client predicts via ClientPredictor (v1.5) but the host stays authoritative. PlayerController is
+            // removed — capture the tuning it carries FIRST, since the predictor needs the same MovementTuning
+            // and the serialized fields vanish with the component. The collision config + Rigidbody2D survive.
+            var ctrl = instance.GetComponent<PlayerController>();
+            PlayerTuning tuning = ctrl != null ? ctrl.Tuning : null;
+            float fallLimitY    = ctrl != null ? ctrl.FallLimitY : -20f;
             if (ctrl != null) Destroy(ctrl);
             var keyP1 = instance.GetComponent<KeyboardInputSource_P1>();
             if (keyP1 != null) Destroy(keyP1);
@@ -238,7 +242,13 @@ namespace JumpNowBro.Networking
             sender.Bind(keyP2, transport, TickClock.Instance);
 
             currentClientRenderer = instance.AddComponent<ClientStateRenderer>();
-            currentClientRenderer.Bind(instance.transform);
+
+            var rb = instance.GetComponent<Rigidbody2D>();
+            var collisionConfig = instance.GetComponent<PlayerCollisionConfig>();
+            var predictor = instance.AddComponent<ClientPredictor>();
+            predictor.Bind(sender, currentClientRenderer, TickClock.Instance, ControlMapStore.Instance,
+                           rb, collisionConfig != null ? collisionConfig.CreateWorld(rb) : null,
+                           tuning, fallLimitY);
         }
 
         void OnLevelLoadBegin(int sceneIndex)

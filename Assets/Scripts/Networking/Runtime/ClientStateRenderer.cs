@@ -4,27 +4,28 @@ using JumpNowBro.Util;
 
 namespace JumpNowBro.Networking
 {
-    /// Client-side STATE consumer. v1.4 is **pre-prediction**: the client doesn't run Movement.Step;
-    /// it teleports the Player to the host's authoritative position on every newer STATE. ControlMap
-    /// changes mirror to ControlMapStore so HUD reads stay role-agnostic; deathCount increments fire
-    /// DeathNotifier so camera shake and HUD respond on the client.
+    /// Client-side STATE decoder. As of v1.5 it no longer moves the Player — the ClientPredictor owns the pose
+    /// (prediction + reconciliation drive the Rigidbody2D). This component decodes each STATE into the
+    /// authoritative snapshot the predictor reseeds from (CurrentState + SnapshotTick + LastConsumedClientTick),
+    /// caches the host's input frame for dead-reckoning, mirrors ControlMap to ControlMapStore (HUD), and fires
+    /// DeathNotifier so camera shake + HUD respond on the client.
     ///
-    /// `CurrentState` mirrors the post-step MovementState in the same shape PlayerController holds —
-    /// v1.5's predictor inherits this field as its seed without a wire-format change.
-    ///
-    /// NetworkManager owns the dispatch closure that calls ApplyPayload; this component just stores
-    /// the bound target + the most-recent state. Respawn-time handler-nulling races avoided.
+    /// NetworkManager owns the dispatch closure that calls ApplyPayload; this component just stores the decoded
+    /// state. Respawn-time handler-nulling races avoided.
     public sealed class ClientStateRenderer : MonoBehaviour
     {
-        Transform target;
         uint lastSeenSnapshotTick;
         bool haveSeen;
 
         public MovementState CurrentState { get; private set; }
         /// Cached so v1.5's predictor can dead-reckon host-owned inputs between snapshots.
         public PlayerInputFrame LastRemoteHostFrame { get; private set; }
-
-        public void Bind(Transform target) => this.target = target;
+        /// True once at least one STATE has been applied — the predictor waits for this before predicting.
+        public bool HasState => haveSeen;
+        /// The snapshot tick of the most recent applied STATE; the predictor reseeds when this advances.
+        public uint SnapshotTick => lastSeenSnapshotTick;
+        /// The host's last-consumed client tick — the reconciliation replay anchor (#81).
+        public uint LastConsumedClientTick { get; private set; }
 
         public void ApplyPayload(byte[] payload)
         {
@@ -35,14 +36,13 @@ namespace JumpNowBro.Networking
             haveSeen = true;
             lastSeenSnapshotTick = body.snapshotTick;
 
-            if (target != null)
-            {
-                target.position = new Vector3(body.movementState.posX, body.movementState.posY, target.position.z);
-                Physics2D.SyncTransforms();                                  // m_AutoSyncTransforms=0 — push the pose into Physics2D so the camera follow reads it
-            }
+            // v1.5: the ClientPredictor owns the pose now (drives the Rigidbody2D from prediction + reconcile).
+            // The v1.4 teleport to body.movementState.pos was removed here; this component is now the STATE
+            // decoder + HUD/death side-effects, and the authoritative-state source the predictor reseeds from.
 
-            CurrentState        = body.movementState;
-            LastRemoteHostFrame = body.remoteInputFrame;
+            CurrentState           = body.movementState;
+            LastRemoteHostFrame    = body.remoteInputFrame;
+            LastConsumedClientTick = body.lastConsumedClientTick;
 
             // HUD ControlMap mirror — host's swap landed; bring our HUD in sync.
             if (ControlMapStore.Instance != null && !MapsEqual(body.controlMap, ControlMapStore.Instance.Current))

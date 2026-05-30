@@ -37,6 +37,12 @@ namespace JumpNowBro.Gameplay
         /// predictor can dead-reckon host-owned actions between snapshots.
         public PlayerInputFrame LastHostInputFrame { get; private set; }
 
+        /// Read by NetworkManager.WireClient BEFORE it destroys this controller on the client, so the client
+        /// predictor can build the same MovementTuning the host steps with (these serialized fields vanish
+        /// with the destroyed component otherwise).
+        public PlayerTuning Tuning => tuning;
+        public float FallLimitY => fallLimitY;
+
         public void ResetDeathCount() => DeathCount = 0;
 
         public void SetCheckpoint(Vector2 pos, ControlMap map)
@@ -89,7 +95,20 @@ namespace JumpNowBro.Gameplay
         void FixedUpdate()
         {
             if (p1 == null || p2 == null || tuning == null) return;
-            if (isDead) return;
+            if (isDead)
+            {
+                // Keep the wire warm during the 0.4s death freeze: broadcast the frozen pose with isDead set so
+                // the v1.5 client predictor HOLDS at the death position (and snaps cleanly on respawn) instead of
+                // free-running its local prediction through the hazard. Without this the host goes silent during
+                // death and the client's predictor walks the body through the spike until the respawn STATE lands.
+                // v1.6's reliable DEATH EVENT (apply_at_tick) replaces this STATE-bridged signal.
+                currentState.posX = rb.position.x;
+                currentState.posY = rb.position.y;
+                currentState.isDead = true;
+                uint deadTick = TickClock.Instance != null ? TickClock.Instance.Current : 0u;
+                OnSimStepCompleted?.Invoke(deadTick, currentState);
+                return;
+            }
 
             float dt = Time.fixedDeltaTime;
 
