@@ -1,17 +1,14 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.Serialization;
 using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
     [RequireComponent(typeof(Rigidbody2D))]
+    [RequireComponent(typeof(PlayerCollisionConfig))]
     public class PlayerController : MonoBehaviour
     {
         [SerializeField] PlayerTuning tuning;
-        [SerializeField, FormerlySerializedAs("groundLayers")] LayerMask solidLayers;
-        [SerializeField] Transform groundCheckPoint;
-        [SerializeField] float groundCheckRadius = 0.15f;
         [SerializeField] float fallLimitY = -20f;
 
         const float RespawnDelay = 0.4f;
@@ -78,8 +75,15 @@ namespace JumpNowBro.Gameplay
         void Awake()
         {
             rb = GetComponent<Rigidbody2D>();
-            collisionWorld = new UnityCollisionWorld(rb, solidLayers, groundCheckPoint, groundCheckRadius);
             currentState = FreshSpawnState();
+            var collisionConfig = GetComponent<PlayerCollisionConfig>();
+            if (collisionConfig == null)
+            {
+                Debug.LogError("PlayerController requires a PlayerCollisionConfig component on the Player prefab.", this);
+                enabled = false;
+                return;
+            }
+            collisionWorld = collisionConfig.CreateWorld(rb);
         }
 
         void FixedUpdate()

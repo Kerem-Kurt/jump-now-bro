@@ -14,7 +14,7 @@ namespace JumpNowBro.Gameplay
     /// uses the (x, y) directly with the GroundCheck child's local offset (matches v0.4-mvp's
     /// OverlapCircle behavior exactly). v1.5 prediction-replay may need a different impl if the
     /// invariant can't be maintained on the client.
-    internal sealed class UnityCollisionWorld : ICollisionWorld
+    public sealed class UnityCollisionWorld : ICollisionWorld
     {
         readonly Rigidbody2D rb;
         readonly Transform groundCheckPoint;

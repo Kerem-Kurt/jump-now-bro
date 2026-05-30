@@ -49,6 +49,7 @@ GameObject:
   - component: {fileID: 5221385088098663863}
   - component: {fileID: 322435415955060192}
   - component: {fileID: 5876838893907765534}
+  - component: {fileID: 3471790116944777742}
   m_Layer: 6
   m_Name: Player
   m_TagString: Player
@@ -158,11 +159,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.PlayerController
   tuning: {fileID: 11400000, guid: 0d22dcf0fd8e7473abf4eb78fac474ca, type: 2}
-  solidLayers:
-    serializedVersion: 2
-    m_Bits: 384
-  groundCheckPoint: {fileID: 8148958862582209677}
-  groundCheckRadius: 0.15
   fallLimitY: -20
 --- !u!114 &2185777907514716244
 MonoBehaviour:
@@ -387,3 +383,20 @@ MonoBehaviour:
   trailWidth: 0.45
   dashColor: {r: 0.5, g: 0.9, b: 1, a: 1}
   dashBurstCount: 14
+--- !u!114 &3471790116944777742
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8487751285114912462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88b51f0ee90c8463696fe66c23c14d4c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.PlayerCollisionConfig
+  solidLayers:
+    serializedVersion: 2
+    m_Bits: 384
+  groundCheckPoint: {fileID: 8148958862582209677}
+  groundCheckRadius: 0.15

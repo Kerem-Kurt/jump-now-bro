@@ -1,0 +1,23 @@
+{
+    "name": "JumpNowBro.Tests.PlayMode",
+    "rootNamespace": "JumpNowBro.Tests.PlayMode",
+    "references": [
+        "JumpNowBro.Util",
+        "JumpNowBro.Gameplay",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
