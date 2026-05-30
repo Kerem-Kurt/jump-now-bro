@@ -88,5 +88,81 @@ namespace JumpNowBro.Tests
             Assert.IsFalse((edges & EdgeFlags.JumpCutThisTick) != 0, "host-owned jump's variable-cut must not fire on the client");
             Assert.Greater(next.velY, 10f - Tuning().gravity * Dt - 0.001f, "velY only loses gravity, not a half-cut");
         }
+
+        // ---- reconciliation (#81) ----
+
+        // Client owns Move (P2) so its right input drives X in both the live prediction and the replay.
+        static ControlMap ClientOwnsMove() => ControlMap.WithSwap(ControlMap.Default, PlayerAction.MoveHorizontal);
+
+        [Test]
+        public void Reconcile_HostConfirmedThroughNow_TakesAuthority_NoReplay()
+        {
+            var auth = Grounded();
+            auth.posX = 4f;
+            var r = ClientPrediction.Reconcile(auth, lastConsumedClientTick: 10, currentClientTick: 10,
+                new ClientHistory(), ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+            Assert.IsFalse(r.HardSnapped);
+            Assert.AreEqual(0, r.ReplayedTicks);
+            Assert.AreEqual(4f, r.State.posX, 0.0001f);
+        }
+
+        [Test]
+        public void Reconcile_ReplaysBufferedInputs_ToCurrentTick()
+        {
+            // Buffer 5 ticks of "hold right" (client owns Move), then reconcile from an authoritative seed at C=10.
+            var map = ClientOwnsMove();
+            var t = Tuning();
+            var w = new FakeFlatGroundWorld();
+            var history = new ClientHistory();
+            for (uint tk = 11; tk <= 15; tk++) history.RecordInput(tk, Frame(right: true));
+
+            var auth = Grounded();                                  // authoritative at C=10, x=0
+            var r = ClientPrediction.Reconcile(auth, 10, 15, history, map, Idle, t, Dt, w);
+
+            Assert.IsFalse(r.HardSnapped);
+            Assert.AreEqual(5, r.ReplayedTicks);
+
+            // Independently step the same 5 right-inputs from the same seed → replay must match exactly.
+            var expected = auth;
+            for (int i = 0; i < 5; i++)
+                (expected, _) = ClientPrediction.PredictStep(expected, map, Frame(right: true), Idle, t, Dt, w);
+            Assert.AreEqual(expected.posX, r.State.posX, 0.0001f, "replayed state == fresh stepping of the buffered inputs");
+            Assert.Greater(r.State.posX, auth.posX, "held-right replay advanced X past the authoritative seed");
+        }
+
+        [Test]
+        public void Reconcile_WindowOverCap_HardSnaps_NoReplay()
+        {
+            var auth = Grounded();
+            var r = ClientPrediction.Reconcile(auth, 0, (uint)(ClientPrediction.DefaultReplayCap + 1),
+                new ClientHistory(), ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+            Assert.IsTrue(r.HardSnapped);
+            Assert.AreEqual(0, r.ReplayedTicks);
+            Assert.AreEqual(auth.posX, r.State.posX, 0.0001f);
+        }
+
+        [Test]
+        public void Reconcile_HoleInWindow_HardSnaps_ToAuthoritative()
+        {
+            // Record ticks 11,12 but leave 13 missing — the reconciler must bail rather than step a default input.
+            var history = new ClientHistory();
+            history.RecordInput(11, Frame(right: true));
+            history.RecordInput(12, Frame(right: true));
+            var auth = Grounded();
+            var r = ClientPrediction.Reconcile(auth, 10, 14, history, ClientOwnsMove(), Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+            Assert.IsTrue(r.HardSnapped, "a hole in the replay window forces a hard snap");
+            Assert.AreEqual(auth.posX, r.State.posX, 0.0001f);
+        }
+
+        [Test]
+        public void Reconcile_OnBeforeStep_FiresOncePerReplayedTick()
+        {
+            var history = new ClientHistory();
+            for (uint tk = 11; tk <= 13; tk++) history.RecordInput(tk, Frame(right: true));
+            int calls = 0;
+            ClientPrediction.Reconcile(Grounded(), 10, 13, history, ClientOwnsMove(), Idle, Tuning(), Dt,
+                new FakeFlatGroundWorld(), onBeforeStep: _ => calls++);
+            Assert.AreEqual(3, calls, "onBeforeStep runs before each replayed Movement.Step (cast-origin re-establish)");
+        }
     }
 }

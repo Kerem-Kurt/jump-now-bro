@@ -36,5 +36,59 @@ namespace JumpNowBro.Util
             var input = ControlMap.Route(map, host, localFrame);   // p1 = host, p2 = client-local
             return Movement.Step(s, input, t, dt, world);
         }
+
+        public const int DefaultReplayCap = 64;
+
+        public readonly struct ReconcileResult
+        {
+            public readonly MovementState State;
+            public readonly bool HardSnapped;     // true = bailed to authoritative (hole or over-cap) → caller teleports
+            public readonly int ReplayedTicks;
+            public ReconcileResult(MovementState state, bool hardSnapped, int replayedTicks)
+            {
+                State = state; HardSnapped = hardSnapped; ReplayedTicks = replayedTicks;
+            }
+        }
+
+        /// Reconcile prediction against an authoritative STATE (#81). Reseed to the authoritative snapshot, then
+        /// replay the client's buffered local inputs for ticks (lastConsumedClientTick, currentClientTick] so the
+        /// owned-input prediction survives the correction. Returns the rebuilt "predicted at currentClientTick".
+        ///
+        /// `lastConsumedClientTick` IS the client-tick anchor: the host's authoritative state already reflects it
+        /// applying client input through that tick, so the replay window starts at the next tick. Host-owned
+        /// actions are dead-reckoned from the single latest `hostFrame` (v1.5 limit; v1.6 schedules them).
+        ///
+        /// Hard-snap (return authoritative, HardSnapped=true) when: the window exceeds `replayCap` (post-stall
+        /// catch-up storm — bounded so we never spike CPU or read a ring-wrapped tick), OR any tick in the window
+        /// is missing from history (a hole from a skipped FixedUpdate — never replay a default-input step).
+        ///
+        /// `onBeforeStep` lets the Unity caller re-establish the rb cast origin before each replayed Movement.Step
+        /// (rb.position = state.pos; SyncTransforms). Pure callers (CI tests on fake worlds) pass null.
+        public static ReconcileResult Reconcile(
+            in MovementState authoritative, uint lastConsumedClientTick, uint currentClientTick,
+            ClientHistory history, ControlMap map, in PlayerInputFrame hostFrame,
+            in MovementTuning t, float dt, ICollisionWorld world,
+            System.Action<MovementState> onBeforeStep = null, int replayCap = DefaultReplayCap)
+        {
+            if (currentClientTick <= lastConsumedClientTick)
+                return new ReconcileResult(authoritative, false, 0);          // host already confirmed through now
+
+            if (currentClientTick - lastConsumedClientTick > (uint)replayCap)
+                return new ReconcileResult(authoritative, true, 0);           // too far to replay → snap
+
+            var state = authoritative;
+            int replayed = 0;
+            for (uint tick = lastConsumedClientTick + 1; tick <= currentClientTick; tick++)
+            {
+                if (!history.TryGetInput(tick, out var local))
+                    return new ReconcileResult(authoritative, true, replayed); // hole → snap
+
+                onBeforeStep?.Invoke(state);
+                (state, _) = PredictStep(state, map, local, hostFrame, t, dt, world);
+                history.RecordPredicted(tick, state);
+                replayed++;
+            }
+            return new ReconcileResult(state, false, replayed);
+        }
     }
 }

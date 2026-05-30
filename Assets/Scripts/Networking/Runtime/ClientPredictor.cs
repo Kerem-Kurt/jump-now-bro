@@ -9,10 +9,11 @@ namespace JumpNowBro.Networking
     /// state. The pure step lives in Util/ClientPrediction; this is the Unity glue: frame timing, the shared
     /// collision world, and the rb-position cast-origin invariant.
     ///
-    /// v1.5 scope split: this commit reseeds the predicted state to the latest authoritative snapshot whenever a
-    /// new STATE arrives (no replay yet — on a clean LAN snapshotTick ≈ now, so this is already correct; under
-    /// latency it leaves a small per-STATE step that #81's replay reconciliation removes). #82 then smooths any
-    /// residual onto a render child. Predicted EdgeFlags are produced but juice is deferred to v1.6 #94.
+    /// On a new STATE it reconciles: reseed to the authoritative snapshot and replay the buffered local inputs
+    /// from lastConsumedClientTick+1..now (ClientPrediction.Reconcile), so owned-input prediction survives the
+    /// correction; a hole or an over-cap window hard-snaps instead. Otherwise it steps one tick forward. #82 will
+    /// smooth the post-reconcile residual onto a render child; predicted EdgeFlags are produced but juice is
+    /// deferred to v1.6 #94.
     ///
     /// Execution order −40: after ClientInputSender (−50) so LastSampledFrame is fresh, after TickClock (−100).
     [DefaultExecutionOrder(-40)]
@@ -79,39 +80,50 @@ namespace JumpNowBro.Networking
                 return;
             }
 
-            // Reseed to authority on a fresh snapshot. #81 replaces this with replay from LastConsumedClientTick.
-            if (!seeded || stateRenderer.SnapshotTick != lastReseedSnapshot)
-            {
-                predicted = authoritative;
-                lastReseedSnapshot = stateRenderer.SnapshotTick;
-                seeded = true;
-            }
-
             uint tick = tickClock.Current;
             if (sender.LastSampledTick != tick) return;               // R5: only this tick's sample; never record a stale frame
             var local = sender.LastSampledFrame;
+            history.RecordInput(tick, local);                         // record BEFORE reconcile so the now-tick is replayable
 
             var map = mapStore != null ? mapStore.Current : ControlMap.Default;
             var t = tuning.AsMovementTuning(Time.fixedDeltaTime, fallLimitY);
+            var host = stateRenderer.LastRemoteHostFrame;
 
-            // R2: re-establish the cast origin so Movement.Step's sweep (rb.Cast) originates at the predicted
-            // position — the host invariant, reproduced on the client so collision is bit-for-bit comparable.
-            rb.position = new Vector2(predicted.posX, predicted.posY);
-            Physics2D.SyncTransforms();
+            bool newSnapshot = !seeded || stateRenderer.SnapshotTick != lastReseedSnapshot;
+            if (newSnapshot)
+            {
+                // Reconcile: reseed to authority and replay buffered local inputs up through this tick. SetBodyOrigin
+                // re-establishes the cast origin (R2) before each replayed step so replay collision matches the host.
+                var r = ClientPrediction.Reconcile(authoritative, stateRenderer.LastConsumedClientTick, tick,
+                                                   history, map, host, t, Time.fixedDeltaTime, world, SetBodyOrigin);
+                predicted = r.State;
+                seeded = true;
+                lastReseedSnapshot = stateRenderer.SnapshotTick;
 
-            var (next, _) = ClientPrediction.PredictStep(predicted, map, local, stateRenderer.LastRemoteHostFrame,
-                                                          t, Time.fixedDeltaTime, world);
-            predicted = next;
+                if (r.HardSnapped) { HardSnapTo(predicted); return; }  // teleport (initial sync / post-stall / post-death hole)
+            }
+            else
+            {
+                SetBodyOrigin(predicted);                              // R2 cast origin for the single forward step
+                var (next, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, Time.fixedDeltaTime, world);
+                predicted = next;
+                history.RecordPredicted(tick, next);
+            }
 
-            history.RecordInput(tick, local);
-            history.RecordPredicted(tick, next);
-
-            rb.MovePosition(new Vector2(next.posX, next.posY));        // kinematic mover; also fires trigger contacts
+            rb.MovePosition(new Vector2(predicted.posX, predicted.posY)); // kinematic mover; also fires trigger contacts
         }
 
-        // Hard teleport for host-authoritative jumps (death hold, respawn). transform.position + SyncTransforms
-        // (not MovePosition) so the kinematic body cuts instantly without interpolation streak — the v1.3
-        // respawn-teleport pattern, mirrored on the client.
+        // Re-establish the cast origin so Movement.Step's sweep (rb.Cast) originates at `s` — the host's per-tick
+        // invariant, reproduced on the client so prediction + replay collision is bit-for-bit comparable (R2).
+        void SetBodyOrigin(MovementState s)
+        {
+            rb.position = new Vector2(s.posX, s.posY);
+            Physics2D.SyncTransforms();
+        }
+
+        // Hard teleport for host-authoritative jumps (death hold, respawn, over-cap/hole reconcile). transform +
+        // SyncTransforms (not MovePosition) so the kinematic body cuts instantly without interpolation streak —
+        // the v1.3 respawn-teleport pattern, mirrored on the client.
         void HardSnapTo(in MovementState s)
         {
             transform.position = new Vector3(s.posX, s.posY, transform.position.z);
