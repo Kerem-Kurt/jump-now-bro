@@ -24,6 +24,12 @@ namespace JumpNowBro.Networking
         IReliableTransport transport;
         TickClock tickClock;
 
+        /// The frame sampled this FixedUpdate, exposed so the v1.5 client predictor consumes the SAME frame the
+        /// host will simulate — one sampler, no double-sample divergence. Valid only when
+        /// LastSampledTick == TickClock.Current; a transport gap (early-return below) leaves these un-advanced.
+        public PlayerInputFrame LastSampledFrame { get; private set; }
+        public uint LastSampledTick { get; private set; }
+
         public void Bind(IInputSource source, IReliableTransport transport, TickClock tickClock)
         {
             this.source = source;
@@ -46,6 +52,8 @@ namespace JumpNowBro.Networking
                 jumpHeld    = source.JumpHeld,
                 dashPressed = source.DashPressed,
             };
+            LastSampledFrame = f;                        // single-sampler seam: the predictor reads this, not a re-sample
+            LastSampledTick  = tick;
 
             int n = ring.Sample(tick, f, sendBuffer);
             try
