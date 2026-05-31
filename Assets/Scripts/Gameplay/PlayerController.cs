@@ -25,6 +25,9 @@ namespace JumpNowBro.Gameplay
         public bool IsInvulnerable => currentState.invulnTimer > 0f;
         public bool IsDead => isDead;
         public Vector2 CheckpointPosition => checkpointPosition;
+        /// The ControlMap restored on respawn — the host sends this in the DEATH EVENT so the client resets
+        /// ownership to the same checkpoint map (read at OnDeath, before the respawn delay applies it).
+        public ControlMap CheckpointMap => checkpointControlMap;
         public int DeathCount { get; private set; }
 
         public event System.Action<int> OnDeath;

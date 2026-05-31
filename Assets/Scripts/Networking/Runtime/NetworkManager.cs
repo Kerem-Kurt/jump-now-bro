@@ -215,7 +215,13 @@ namespace JumpNowBro.Networking
             if (keyP2 != null) Destroy(keyP2);                            // host's P2 input comes over the wire
 
             currentHostRemote = instance.AddComponent<NetworkRemoteInputSource>();
-            if (ctrl != null) ctrl.Inject(keyP1, currentHostRemote);
+            if (ctrl != null)
+            {
+                ctrl.Inject(keyP1, currentHostRemote);
+                // Send a reliable DEATH EVENT when the host dies — carries the checkpoint map so the client
+                // resets ownership in-order (after any swaps), plus the death tick for v1.7 anchoring.
+                ctrl.OnDeath += _ => SendDeathEvent(HostConsumedClientTick, ctrl.CheckpointMap);
+            }
 
             var bcast = instance.AddComponent<NetworkStateBroadcaster>();
             // Note: transport intentionally NOT passed — broadcaster reads NetworkManager.CurrentTransport
@@ -267,6 +273,13 @@ namespace JumpNowBro.Networking
                     case EventKind.Swap:
                         SwapScheduleDriver.Instance?.Scheduler.Schedule(ev.tick, ev.map, ev.triggerId);
                         break;
+                    case EventKind.Death:
+                        // Ordered cancel: this EVENT is delivered after the swaps it supersedes, so dropping all
+                        // pending swaps and resetting to the checkpoint map can't be undone by a stale swap. The
+                        // death count + flash still come via STATE.deathCount → DeathNotifier (mid-join-safe).
+                        SwapScheduleDriver.Instance?.Scheduler.ResetTo(ev.map);
+                        ControlMapStore.Instance?.Apply(ev.map);
+                        break;
                 }
             }
         }
@@ -284,6 +297,15 @@ namespace JumpNowBro.Networking
         {
             if (Role != GameRole.Hosting || transport == null) return;
             int n = EventBody.Swap(applyTick, map, triggerId).Write(eventSendScratch);
+            transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
+        }
+
+        /// Host: send the reliable DEATH EVENT carrying the checkpoint map (ordered after any pending swaps so
+        /// the client's cancel + map reset can't be clobbered by a late swap). No-op off the host.
+        public void SendDeathEvent(uint deathTick, ControlMap checkpointMap)
+        {
+            if (Role != GameRole.Hosting || transport == null) return;
+            int n = EventBody.Death(deathTick, checkpointMap).Write(eventSendScratch);
             transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
         }
 

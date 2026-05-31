@@ -80,10 +80,15 @@ namespace JumpNowBro.Networking
             NetworkManager.Instance?.SendSwapEvent(applyTick, map, req.triggerId);   // no-op unless hosting
         }
 
-        // Cancel pending swaps on death so one scheduled before the death can't fire after respawn. v1.6 step 4's
-        // DEATH EVENT supersedes this with the exact checkpoint map + death tick.
-        void HandleDeath(int _) =>
+        // Cancel pending swaps on death so one scheduled before the death can't fire after respawn. Host/solo
+        // only: the client cancels via the reliable, in-order DEATH EVENT (delivered after the swaps it must
+        // cancel), never off the unreliable STATE-delta that drives DeathNotifier — that would race the swaps.
+        // The base map is irrelevant here (host/solo don't reconcile via MapAtTick); respawn re-applies it.
+        void HandleDeath(int _)
+        {
+            if (!Authority.IsHost) return;
             Scheduler.ResetTo(ControlMapStore.Instance != null ? ControlMapStore.Instance.Current : ControlMap.Default);
+        }
 
         // A new level starts at Default (matches LevelManager's own map reset); drop any cross-level pending swap.
         void HandleBeforeLevelLoad(int _) => Scheduler.ResetTo(ControlMap.Default);
