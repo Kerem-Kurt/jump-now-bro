@@ -245,10 +245,11 @@ namespace JumpNowBro.Networking
 
             var rb = instance.GetComponent<Rigidbody2D>();
             var collisionConfig = instance.GetComponent<PlayerCollisionConfig>();
+            var visualChild = instance.transform.Find("Visual");      // render-only child (#107); null falls back to no smoothing
             var predictor = instance.AddComponent<ClientPredictor>();
             predictor.Bind(sender, currentClientRenderer, TickClock.Instance, ControlMapStore.Instance,
                            rb, collisionConfig != null ? collisionConfig.CreateWorld(rb) : null,
-                           tuning, fallLimitY);
+                           tuning, fallLimitY, visualChild);
         }
 
         void OnLevelLoadBegin(int sceneIndex)

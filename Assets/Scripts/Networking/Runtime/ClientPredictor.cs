@@ -27,16 +27,19 @@ namespace JumpNowBro.Networking
         ICollisionWorld world;
         PlayerTuning tuning;
         float fallLimitY;
+        Transform visualChild;            // render-only child (#107); collider/rb stay at true sim pos
+        Vector3 visualBaseLocal;          // the child's authored local position; offset is added on top
 
         readonly ClientHistory history = new ClientHistory();
         MovementState predicted;
+        VisualSmoothing smoothing;
         bool seeded;
         bool wasDead;
         uint lastReseedSnapshot;
 
         public void Bind(ClientInputSender sender, ClientStateRenderer stateRenderer, TickClock tickClock,
                          ControlMapStore mapStore, Rigidbody2D rb, ICollisionWorld world,
-                         PlayerTuning tuning, float fallLimitY)
+                         PlayerTuning tuning, float fallLimitY, Transform visualChild)
         {
             this.sender = sender;
             this.stateRenderer = stateRenderer;
@@ -46,6 +49,8 @@ namespace JumpNowBro.Networking
             this.world = world;
             this.tuning = tuning;
             this.fallLimitY = fallLimitY;
+            this.visualChild = visualChild;
+            visualBaseLocal = visualChild != null ? visualChild.localPosition : Vector3.zero;
         }
 
         void FixedUpdate()
@@ -66,7 +71,7 @@ namespace JumpNowBro.Networking
                 seeded = true;
                 wasDead = true;
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
-                HardSnapTo(authoritative);
+                HardSnapTo(authoritative);                            // also clears the visual offset (instant cut)
                 return;
             }
 
@@ -92,6 +97,12 @@ namespace JumpNowBro.Networking
             bool newSnapshot = !seeded || stateRenderer.SnapshotTick != lastReseedSnapshot;
             if (newSnapshot)
             {
+                // Forward continuation from last tick's state WITHOUT the correction — what we'd have shown this
+                // frame absent a new STATE. The gap between this and the reconciled result is the discontinuity to
+                // smooth (and only that; normal motion produces a zero gap).
+                SetBodyOrigin(predicted);
+                var (forward, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, Time.fixedDeltaTime, world);
+
                 // Reconcile: reseed to authority and replay buffered local inputs up through this tick. SetBodyOrigin
                 // re-establishes the cast origin (R2) before each replayed step so replay collision matches the host.
                 var r = ClientPrediction.Reconcile(authoritative, stateRenderer.LastConsumedClientTick, tick,
@@ -101,6 +112,8 @@ namespace JumpNowBro.Networking
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
 
                 if (r.HardSnapped) { HardSnapTo(predicted); return; }  // teleport (initial sync / post-stall / post-death hole)
+
+                smoothing.Inject(forward.posX - predicted.posX, forward.posY - predicted.posY);
             }
             else
             {
@@ -111,6 +124,16 @@ namespace JumpNowBro.Networking
             }
 
             rb.MovePosition(new Vector2(predicted.posX, predicted.posY)); // kinematic mover; also fires trigger contacts
+            ApplyVisual();                                            // render child at simPos + offset
+            smoothing.Decay();                                       // ease the offset toward zero for next tick
+        }
+
+        // Render-child position = its authored local + the (decaying) smoothing offset. Collider/rb are untouched
+        // — only the sprite eases the correction, so collision + triggers stay on the true sim position.
+        void ApplyVisual()
+        {
+            if (visualChild == null) return;
+            visualChild.localPosition = visualBaseLocal + new Vector3(smoothing.offsetX, smoothing.offsetY, 0f);
         }
 
         // Re-establish the cast origin so Movement.Step's sweep (rb.Cast) originates at `s` — the host's per-tick
@@ -128,6 +151,8 @@ namespace JumpNowBro.Networking
         {
             transform.position = new Vector3(s.posX, s.posY, transform.position.z);
             Physics2D.SyncTransforms();
+            smoothing.Clear();                                        // instant cut: no residual render offset across a teleport
+            ApplyVisual();
         }
     }
 }
