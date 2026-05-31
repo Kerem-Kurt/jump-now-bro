@@ -635,6 +635,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.SwapTrigger
   actionToSwap: 0
+  triggerId: 1
+  showBanner: 1
+  armedAlpha: 0.55
+  firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  bannerSortingOrder: 1
 --- !u!61 &1236124731
 BoxCollider2D:
   m_ObjectHideFlags: 0
