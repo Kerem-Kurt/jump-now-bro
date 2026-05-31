@@ -14,8 +14,9 @@ namespace JumpNowBro.Util
     {
         public float offsetX, offsetY;
 
-        public const float DefaultDecayPerTick = 0.30f;   // ~140 ms blend at 60 Hz
-        public const float DefaultSnapThreshold = 1.5f;   // beyond this, cut instantly
+        // Recorded in PredictionTuning (single source); aliased here for the optional-parameter defaults.
+        public const float DefaultDecayPerTick = PredictionTuning.SmoothingDecayPerTick;
+        public const float DefaultSnapThreshold = PredictionTuning.SnapThreshold;
         const float ZeroEpsilon = 0.0005f;                // clamp to 0 so the offset never lingers / oscillates
 
         /// Add a reconcile correction (forwardPredicted − reconciled). If the resulting offset magnitude exceeds

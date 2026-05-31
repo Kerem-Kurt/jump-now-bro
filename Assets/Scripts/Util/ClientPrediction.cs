@@ -37,7 +37,7 @@ namespace JumpNowBro.Util
             return Movement.Step(s, input, t, dt, world);
         }
 
-        public const int DefaultReplayCap = 64;
+        public const int DefaultReplayCap = PredictionTuning.ReplayCap;
 
         public readonly struct ReconcileResult
         {
