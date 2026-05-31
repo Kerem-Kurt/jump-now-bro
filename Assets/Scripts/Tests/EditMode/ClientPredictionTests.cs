@@ -100,7 +100,7 @@ namespace JumpNowBro.Tests
             var auth = Grounded();
             auth.posX = 4f;
             var r = ClientPrediction.Reconcile(auth, lastConsumedClientTick: 10, currentClientTick: 10,
-                new ClientHistory(), ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+                new ClientHistory(), _ => ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
             Assert.IsFalse(r.HardSnapped);
             Assert.AreEqual(0, r.ReplayedTicks);
             Assert.AreEqual(4f, r.State.posX, 0.0001f);
@@ -117,7 +117,7 @@ namespace JumpNowBro.Tests
             for (uint tk = 11; tk <= 15; tk++) history.RecordInput(tk, Frame(right: true));
 
             var auth = Grounded();                                  // authoritative at C=10, x=0
-            var r = ClientPrediction.Reconcile(auth, 10, 15, history, map, Idle, t, Dt, w);
+            var r = ClientPrediction.Reconcile(auth, 10, 15, history, _ => map, Idle, t, Dt, w);
 
             Assert.IsFalse(r.HardSnapped);
             Assert.AreEqual(5, r.ReplayedTicks);
@@ -135,7 +135,7 @@ namespace JumpNowBro.Tests
         {
             var auth = Grounded();
             var r = ClientPrediction.Reconcile(auth, 0, (uint)(ClientPrediction.DefaultReplayCap + 1),
-                new ClientHistory(), ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+                new ClientHistory(), _ => ControlMap.Default, Idle, Tuning(), Dt, new FakeFlatGroundWorld());
             Assert.IsTrue(r.HardSnapped);
             Assert.AreEqual(0, r.ReplayedTicks);
             Assert.AreEqual(auth.posX, r.State.posX, 0.0001f);
@@ -149,7 +149,7 @@ namespace JumpNowBro.Tests
             history.RecordInput(11, Frame(right: true));
             history.RecordInput(12, Frame(right: true));
             var auth = Grounded();
-            var r = ClientPrediction.Reconcile(auth, 10, 14, history, ClientOwnsMove(), Idle, Tuning(), Dt, new FakeFlatGroundWorld());
+            var r = ClientPrediction.Reconcile(auth, 10, 14, history, _ => ClientOwnsMove(), Idle, Tuning(), Dt, new FakeFlatGroundWorld());
             Assert.IsTrue(r.HardSnapped, "a hole in the replay window forces a hard snap");
             Assert.AreEqual(auth.posX, r.State.posX, 0.0001f);
         }
@@ -160,9 +160,41 @@ namespace JumpNowBro.Tests
             var history = new ClientHistory();
             for (uint tk = 11; tk <= 13; tk++) history.RecordInput(tk, Frame(right: true));
             int calls = 0;
-            ClientPrediction.Reconcile(Grounded(), 10, 13, history, ClientOwnsMove(), Idle, Tuning(), Dt,
+            ClientPrediction.Reconcile(Grounded(), 10, 13, history, _ => ClientOwnsMove(), Idle, Tuning(), Dt,
                 new FakeFlatGroundWorld(), onBeforeStep: _ => calls++);
             Assert.AreEqual(3, calls, "onBeforeStep runs before each replayed Movement.Step (cast-origin re-establish)");
+        }
+
+        [Test]
+        public void Reconcile_SwapBoundaryInWindow_RoutesPerTickMap()
+        {
+            // A swap (Move P1→P2) takes effect at tick 13, mid replay window (11..15). The mapAt resolver must
+            // route pre-boundary ticks under the host-owned map (client's right input ignored → no X gain) and
+            // post-boundary ticks under the client-owned map (right input drives X). #84 MapAtTick integration.
+            var t = Tuning();
+            var w = new FakeFlatGroundWorld();
+            var hostOwnsMove   = ControlMap.Default;     // ticks < 13: host owns move
+            var clientOwnsMove = ClientOwnsMove();       // ticks >= 13: client owns move
+            System.Func<uint, ControlMap> mapAt = tick => tick >= 13 ? clientOwnsMove : hostOwnsMove;
+
+            var history = new ClientHistory();
+            for (uint tk = 11; tk <= 15; tk++) history.RecordInput(tk, Frame(right: true));
+
+            var auth = Grounded();
+            var r = ClientPrediction.Reconcile(auth, 10, 15, history, mapAt, Idle, t, Dt, w);
+            Assert.IsFalse(r.HardSnapped);
+            Assert.AreEqual(5, r.ReplayedTicks);
+
+            // Independent reference: step the same buffered inputs under the SAME per-tick map.
+            var expected = auth;
+            for (uint tk = 11; tk <= 15; tk++)
+                (expected, _) = ClientPrediction.PredictStep(expected, mapAt(tk), Frame(right: true), Idle, t, Dt, w);
+            Assert.AreEqual(expected.posX, r.State.posX, 0.0001f, "replay must resolve the map per tick, not use one map for the window");
+
+            // Routing the whole window under the OLD (host-owned) map keeps the client's right input inert → no X.
+            var allOld = ClientPrediction.Reconcile(auth, 10, 15, history, _ => hostOwnsMove, Idle, t, Dt, w);
+            Assert.AreEqual(auth.posX, allOld.State.posX, 0.0001f);
+            Assert.Greater(r.State.posX, allOld.State.posX, "post-boundary client-owned ticks must advance X past the all-old-map baseline");
         }
     }
 }

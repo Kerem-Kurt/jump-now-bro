@@ -56,7 +56,11 @@ namespace JumpNowBro.Util
         ///
         /// `lastConsumedClientTick` IS the client-tick anchor: the host's authoritative state already reflects it
         /// applying client input through that tick, so the replay window starts at the next tick. Host-owned
-        /// actions are dead-reckoned from the single latest `hostFrame` (v1.5 limit; v1.6 schedules them).
+        /// actions are dead-reckoned from the single latest `hostFrame` (a known approximation between snapshots).
+        ///
+        /// `mapAt(tick)` resolves the ControlMap in effect at each replayed tick, so a scheduled swap whose
+        /// apply-tick falls inside the window routes pre-boundary ticks under the old map and post-boundary ticks
+        /// under the new one (v1.6 #84). The caller caches the delegate (one alloc) — Reconcile runs per snapshot.
         ///
         /// Hard-snap (return authoritative, HardSnapped=true) when: the window exceeds `replayCap` (post-stall
         /// catch-up storm — bounded so we never spike CPU or read a ring-wrapped tick), OR any tick in the window
@@ -66,7 +70,7 @@ namespace JumpNowBro.Util
         /// (rb.position = state.pos; SyncTransforms). Pure callers (CI tests on fake worlds) pass null.
         public static ReconcileResult Reconcile(
             in MovementState authoritative, uint lastConsumedClientTick, uint currentClientTick,
-            ClientHistory history, ControlMap map, in PlayerInputFrame hostFrame,
+            ClientHistory history, System.Func<uint, ControlMap> mapAt, in PlayerInputFrame hostFrame,
             in MovementTuning t, float dt, ICollisionWorld world,
             System.Action<MovementState> onBeforeStep = null, int replayCap = DefaultReplayCap)
         {
@@ -84,7 +88,7 @@ namespace JumpNowBro.Util
                     return new ReconcileResult(authoritative, true, replayed); // hole → snap
 
                 onBeforeStep?.Invoke(state);
-                (state, _) = PredictStep(state, map, local, hostFrame, t, dt, world);
+                (state, _) = PredictStep(state, mapAt(tick), local, hostFrame, t, dt, world);
                 history.RecordPredicted(tick, state);
                 replayed++;
             }

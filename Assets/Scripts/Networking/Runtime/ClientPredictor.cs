@@ -36,6 +36,7 @@ namespace JumpNowBro.Networking
         bool seeded;
         bool wasDead;
         uint lastReseedSnapshot;
+        System.Func<uint, ControlMap> mapAt;        // cached once in Bind so Reconcile's per-tick lookup never allocates
 
         public void Bind(ClientInputSender sender, ClientStateRenderer stateRenderer, TickClock tickClock,
                          ControlMapStore mapStore, Rigidbody2D rb, ICollisionWorld world,
@@ -51,6 +52,9 @@ namespace JumpNowBro.Networking
             this.fallLimitY = fallLimitY;
             this.visualChild = visualChild;
             visualBaseLocal = visualChild != null ? visualChild.localPosition : Vector3.zero;
+            // Reconcile resolves the map per replayed tick. v1.6's scheduled-swap wiring repoints this at the
+            // PendingSwapScheduler's MapAtTick; until then every tick uses the live current map (= today's behavior).
+            mapAt = _ => this.mapStore != null ? this.mapStore.Current : ControlMap.Default;
         }
 
         void FixedUpdate()
@@ -106,7 +110,7 @@ namespace JumpNowBro.Networking
                 // Reconcile: reseed to authority and replay buffered local inputs up through this tick. SetBodyOrigin
                 // re-establishes the cast origin (R2) before each replayed step so replay collision matches the host.
                 var r = ClientPrediction.Reconcile(authoritative, stateRenderer.LastConsumedClientTick, tick,
-                                                   history, map, host, t, Time.fixedDeltaTime, world, SetBodyOrigin);
+                                                   history, mapAt, host, t, Time.fixedDeltaTime, world, SetBodyOrigin);
                 predicted = r.State;
                 seeded = true;
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
