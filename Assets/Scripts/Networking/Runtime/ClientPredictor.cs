@@ -52,9 +52,13 @@ namespace JumpNowBro.Networking
             this.fallLimitY = fallLimitY;
             this.visualChild = visualChild;
             visualBaseLocal = visualChild != null ? visualChild.localPosition : Vector3.zero;
-            // Reconcile resolves the map per replayed tick. v1.6's scheduled-swap wiring repoints this at the
-            // PendingSwapScheduler's MapAtTick; until then every tick uses the live current map (= today's behavior).
-            mapAt = _ => this.mapStore != null ? this.mapStore.Current : ControlMap.Default;
+            // Reconcile resolves the map per replayed tick from the swap scheduler, so a swap whose apply-tick
+            // falls inside the replay window routes pre-boundary ticks on the old map. Cached once here — a method
+            // group binds one delegate to the (stable) scheduler instance, so the replay loop never allocates.
+            var driver = SwapScheduleDriver.Instance;
+            mapAt = driver != null
+                ? driver.Scheduler.MapAtTick
+                : _ => this.mapStore != null ? this.mapStore.Current : ControlMap.Default;
         }
 
         void FixedUpdate()

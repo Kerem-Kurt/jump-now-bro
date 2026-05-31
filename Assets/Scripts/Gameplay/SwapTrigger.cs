@@ -1,16 +1,32 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using JumpNowBro.Util;
 
 namespace JumpNowBro.Gameplay
 {
+    /// What the host emits when the character crosses a swap volume — the action to flip and a stable
+    /// per-level id so the SWAP EVENT can tell the client which banner to telegraph.
+    public readonly struct SwapRequest
+    {
+        public readonly PlayerAction action;
+        public readonly byte triggerId;
+        public SwapRequest(PlayerAction action, byte triggerId) { this.action = action; this.triggerId = triggerId; }
+    }
+
     [RequireComponent(typeof(Collider2D))]
     public class SwapTrigger : MonoBehaviour
     {
         static readonly List<SwapTrigger> active = new List<SwapTrigger>();
         static Sprite quadSprite;
 
+        /// Raised on the host when the character enters the volume. The swap scheduler (Networking) composes
+        /// the new map, picks an apply tick, and sends the reliable SWAP EVENT. Static so it crosses the
+        /// asmdef boundary without Gameplay referencing Networking; the single subscriber unsubscribes on destroy.
+        public static event Action<SwapRequest> OnSwapRequested;
+
         [SerializeField] PlayerAction actionToSwap;
+        [SerializeField] byte triggerId;              // unique per level; carried in the SWAP EVENT for client banner targeting
         [SerializeField] bool showBanner = true;
         [SerializeField] float armedAlpha = 0.55f;
         [SerializeField] Color firedColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
@@ -45,29 +61,30 @@ namespace JumpNowBro.Gameplay
             }
         }
 
+        // Grey the banner of the trigger(s) with this id, at the moment the scheduled swap applies. Drives the
+        // visual on BOTH ends (host + client) off the scheduler so the banner greys on the exact apply tick,
+        // not on physical entry — the v1.6 EVENT-driven replacement for the old "visual above the gate" hack.
+        public static void GreyById(byte id)
+        {
+            foreach (var t in active)
+                if (t.triggerId == id) { t.fired = true; t.SetBannerArmed(false); }
+        }
+
         void OnTriggerEnter2D(Collider2D other)
         {
-            if (fired) return;
-            // Detect Player via the "Player" tag instead of TryGetComponent<PlayerController> — client's
-            // role-aware spawner destroys PlayerController, so the component check would always fail
-            // on client and the visual update below would never fire.
+            if (fired) return;                      // already scheduled/consumed — a re-cross must not double-schedule
+            // Detect Player via the "Player" tag, not TryGetComponent<PlayerController> — the client's role-aware
+            // spawner destroys PlayerController, so the component check would always fail there.
             if (!other.CompareTag("Player")) return;
 
-            // Visual update on BOTH host and client — banner greys regardless of role so the client's
-            // HUD matches the host's. The ControlMap mutation below is the only authoritative state
-            // change and stays gated to host (client mirrors via STATE.controlMap).
-            fired = true;
-            SetBannerArmed(false);
-
+            // Host originates swaps; the client learns of them via the SWAP EVENT and greys its banner through
+            // GreyById at the apply tick. Gate at the top now that the banner is EVENT-driven, not entry-driven.
             if (!Authority.IsHost) return;
 
-            var store = ControlMapStore.Instance;
-            if (store == null)
-            {
-                Debug.LogError($"SwapTrigger on '{name}' fired but no ControlMapStore in scene.", this);
-                return;
-            }
-            store.Apply(ControlMap.WithSwap(store.Current, actionToSwap));
+            // Mark scheduled immediately so a re-cross during the lead window can't enqueue a second swap. The
+            // banner stays armed (the telegraph) until GreyById greys it at the apply tick.
+            fired = true;
+            OnSwapRequested?.Invoke(new SwapRequest(actionToSwap, triggerId));
         }
 
         void AcquireBanner()

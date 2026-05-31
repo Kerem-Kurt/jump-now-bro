@@ -16,6 +16,7 @@ namespace JumpNowBro.Networking
     {
         uint lastSeenSnapshotTick;
         bool haveSeen;
+        bool seededMap;
 
         public MovementState CurrentState { get; private set; }
         /// Cached so v1.5's predictor can dead-reckon host-owned inputs between snapshots.
@@ -44,9 +45,14 @@ namespace JumpNowBro.Networking
             LastRemoteHostFrame    = body.remoteInputFrame;
             LastConsumedClientTick = body.lastConsumedClientTick;
 
-            // HUD ControlMap mirror — host's swap landed; bring our HUD in sync.
-            if (ControlMapStore.Instance != null && !MapsEqual(body.controlMap, ControlMapStore.Instance.Current))
+            // Seed the map from the FIRST STATE only (mid-game join: adopt the host's current ownership).
+            // Steady-state swaps arrive on the reliable SWAP EVENT and are applied by the scheduler at the
+            // shared apply tick — mirroring every STATE would fight the scheduler after an early client flip.
+            if (!seededMap && ControlMapStore.Instance != null)
+            {
                 ControlMapStore.Instance.Apply(body.controlMap);
+                seededMap = true;
+            }
 
             // Push the cumulative count into DeathNotifier on every STATE — Raise dedups on equal so the
             // 30 Hz traffic doesn't spam camera shake; the HUD picks up the change via the OnDeath event.
@@ -54,8 +60,5 @@ namespace JumpNowBro.Networking
             // first syncs — acceptable UX (and arguably a useful "you're joining a death-prone partner" cue).
             DeathNotifier.Instance?.Raise(body.deathCount);
         }
-
-        static bool MapsEqual(ControlMap a, ControlMap b) =>
-            a.moveOwner == b.moveOwner && a.jumpOwner == b.jumpOwner && a.dashOwner == b.dashOwner;
     }
 }

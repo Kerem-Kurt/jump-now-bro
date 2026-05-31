@@ -28,6 +28,8 @@ namespace JumpNowBro.Networking
         public float CurrentRtt => session?.RttSeconds ?? 0f;
         /// Exposed so the #78 spawner can hand the live transport to broadcasters/senders/receivers.
         public IReliableTransport CurrentTransport => transport;
+        /// The host's last-consumed client tick — the clock the swap scheduler keys apply_at_tick on when hosting.
+        public uint HostConsumedClientTick => currentHostRemote != null ? currentHostRemote.LastConsumedClientTick : 0u;
 
         UdpSocket gameplaySocket;
         #pragma warning disable 0649   // wired later by a lag-sim toggle; null until then
@@ -184,8 +186,7 @@ namespace JumpNowBro.Networking
                         currentHostRemote.EnqueueFromInputBody(baseTick, packed);
                     break;
                 case MessageType.Event:
-                    if (EventBody.TryRead(payload, out var ev) && ev.kind == EventKind.LevelLoad)
-                        LevelManager.Instance?.LoadByIndex(ev.sceneIndex);
+                    if (EventBody.TryRead(payload, out var ev)) DispatchEvent(ev);
                     break;
                 // Ping/Pong are transport-internal — handled inside UdpReliableTransport, never bubble up here.
             }
@@ -252,11 +253,37 @@ namespace JumpNowBro.Networking
                            tuning, fallLimitY, visualChild);
         }
 
+        // Route a decoded EVENT by (role, kind). The reliable EVENT stream is shared by both directions, so each
+        // role handles only the kinds it should receive and ignores the rest (D11). LevelReady/Death land later.
+        void DispatchEvent(in EventBody ev)
+        {
+            if (Role == GameRole.Client)
+            {
+                switch (ev.kind)
+                {
+                    case EventKind.LevelLoad:
+                        LevelManager.Instance?.LoadByIndex(ev.sceneIndex);
+                        break;
+                    case EventKind.Swap:
+                        SwapScheduleDriver.Instance?.Scheduler.Schedule(ev.tick, ev.map, ev.triggerId);
+                        break;
+                }
+            }
+        }
+
         void OnLevelLoadBegin(int sceneIndex)
         {
             if (Role != GameRole.Hosting || transport == null) return;
-            var body = new EventBody { kind = EventKind.LevelLoad, sceneIndex = (byte)sceneIndex };
-            int n = body.Write(eventSendScratch);
+            int n = EventBody.LevelLoad((byte)sceneIndex).Write(eventSendScratch);
+            transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
+        }
+
+        /// Host: send a scheduled control swap on the reliable channel. apply_at_tick is a client input-tick so
+        /// both ends flip ControlMapStore at the same point in the input stream. No-op off the host.
+        public void SendSwapEvent(uint applyTick, ControlMap map, byte triggerId)
+        {
+            if (Role != GameRole.Hosting || transport == null) return;
+            int n = EventBody.Swap(applyTick, map, triggerId).Write(eventSendScratch);
             transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
         }
 
