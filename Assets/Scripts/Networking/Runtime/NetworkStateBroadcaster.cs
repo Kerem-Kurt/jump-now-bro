@@ -55,8 +55,10 @@ namespace JumpNowBro.Networking
             if (nm.Role != GameRole.Hosting) return;                                 // defense in depth: only host broadcasts
             var transport = nm.CurrentTransport;                                     // read fresh: client rejoin swaps transport without re-Binding the broadcaster
             if (transport == null) return;
-            bool isLoading = levelManager != null && levelManager.IsLoading;
-            if (!StateBroadcastTiming.ShouldBroadcast(hostTick, isLoading)) return;
+            // Withhold STATE both during the async load AND while the host load-barrier is armed (waiting for
+            // the client's LEVEL_READY) — the host must not broadcast a next-scene pose the client can't render.
+            bool gated = levelManager != null && (levelManager.IsLoading || levelManager.SimPaused);
+            if (!StateBroadcastTiming.ShouldBroadcast(hostTick, gated)) return;
 
             var body = new StateBody
             {

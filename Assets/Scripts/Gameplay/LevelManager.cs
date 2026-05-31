@@ -35,6 +35,16 @@ namespace JumpNowBro.Gameplay
         /// async unload/load so a stale-sceneIndex STATE doesn't race the LEVEL_LOAD EVENT (#76).
         public bool IsLoading { get; private set; }
 
+        /// Host load-barrier: while true the host holds its sim + STATE broadcast (NetworkManager sets it
+        /// when it sends a LEVEL_LOAD EVENT and clears it on the client's LEVEL_READY ack / timeout). Default
+        /// false so solo, single-player, and the client are unaffected.
+        public bool SimPaused { get; set; }
+
+        public int LevelCount => levelSceneNames != null ? levelSceneNames.Length : 0;
+
+        /// Fires at the end of LoadLevelRoutine with the loaded index — the client uses this to send LEVEL_READY.
+        public event Action<int> OnLevelLoaded;
+
         void Awake()
         {
             if (Instance != null && Instance != this)
@@ -130,6 +140,8 @@ namespace JumpNowBro.Gameplay
 
                 if (ControlMapStore.Instance != null)
                     ControlMapStore.Instance.Apply(ControlMap.Default);
+
+                OnLevelLoaded?.Invoke(currentLevelIndex);     // client → LEVEL_READY ack; host arms the barrier separately
             }
             finally
             {

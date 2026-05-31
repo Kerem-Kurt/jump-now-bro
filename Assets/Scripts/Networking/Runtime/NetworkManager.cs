@@ -48,6 +48,13 @@ namespace JumpNowBro.Networking
         NetworkRemoteInputSource currentHostRemote;
         ClientStateRenderer currentClientRenderer;
 
+        // Host load barrier (#87): while waiting for the client's LEVEL_READY, hold sim + STATE so the host
+        // never advances into a scene the client hasn't loaded (client casts would hit nothing → fall-through).
+        bool barrierArmed;
+        int barrierScene;
+        double barrierDeadline;
+        const double BarrierTimeoutSeconds = 2.0;   // < the ~3 s liveness teardown: a truly dead peer is handled there, not here
+
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -78,7 +85,11 @@ namespace JumpNowBro.Networking
             // check Role at call time (so a BeginHostingFromUi flip later in the session works).
             var spawner = FindAnyObjectByType<PlayerSpawner>();
             if (spawner != null) spawner.OnPlayerSpawned += OnPlayerSpawnedDispatch;
-            if (LevelManager.Instance != null) LevelManager.Instance.OnBeforeLevelLoad += OnLevelLoadBegin;
+            if (LevelManager.Instance != null)
+            {
+                LevelManager.Instance.OnBeforeLevelLoad += OnLevelLoadBegin;
+                LevelManager.Instance.OnLevelLoaded += OnClientLevelLoaded;
+            }
         }
 
         void Update()
@@ -89,6 +100,11 @@ namespace JumpNowBro.Networking
             condChannel?.Release(clock);
             session?.Tick(Time.deltaTime);                                // session pumps its transport internally — never tick transport directly
             discovery?.Tick(clock);
+            if (barrierArmed && clock >= barrierDeadline)                 // ack lost but link maybe alive: resume best-effort, let liveness own a real death
+            {
+                Debug.LogWarning($"[Hosting] LEVEL_READY timeout for scene {barrierScene} — resuming.");
+                ClearBarrier();
+            }
         }
 
         void OnDestroy()
@@ -171,6 +187,14 @@ namespace JumpNowBro.Networking
             session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on
             session.OnGameplayMessage += OnGameplayMessageDispatch;
             session.Start();                                              // sends HELLO; awaits WELCOME
+        }
+
+        // Client: ack each completed additive load so the host can lift its barrier. Subscribed once in Start.
+        void OnClientLevelLoaded(int sceneIndex)
+        {
+            if (Role != GameRole.Client || transport == null) return;
+            int n = EventBody.LevelReady((byte)sceneIndex).Write(eventSendScratch);
+            transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
         }
 
         void OnGameplayMessageDispatch(MessageType type, byte[] payload)
@@ -282,6 +306,11 @@ namespace JumpNowBro.Networking
                         break;
                 }
             }
+            else if (Role == GameRole.Hosting && ev.kind == EventKind.LevelReady)
+            {
+                // Scene-matched so a stale ack for a previous load can't unfreeze us into the wrong scene.
+                if (barrierArmed && ev.sceneIndex == barrierScene) ClearBarrier();
+            }
         }
 
         void OnLevelLoadBegin(int sceneIndex)
@@ -289,6 +318,28 @@ namespace JumpNowBro.Networking
             if (Role != GameRole.Hosting || transport == null) return;
             int n = EventBody.LevelLoad((byte)sceneIndex).Write(eventSendScratch);
             transport.Send(Channel.Reliable, MessageType.Event, new ReadOnlySpan<byte>(eventSendScratch, 0, n));
+
+            // Arm the load barrier ONLY for a real scene with a connected client. Carve-outs (else the host
+            // would freeze forever waiting for a LEVEL_READY no one sends): an Established session is required
+            // (excludes solo / no-client / departed-client), and the 0xFE all-levels-complete sentinel loads no
+            // scene on the client (it shows the victory screen) so it must not arm.
+            var lm = LevelManager.Instance;
+            bool realScene = lm != null && sceneIndex >= 0 && sceneIndex < lm.LevelCount;
+            bool clientConnected = session != null && session.State == Session.SessionState.Established;
+            if (realScene && clientConnected)
+            {
+                barrierArmed = true;
+                barrierScene = sceneIndex;
+                barrierDeadline = clock + BarrierTimeoutSeconds;
+                lm.SimPaused = true;
+            }
+        }
+
+        // Lift the barrier: resume the host sim + STATE broadcast.
+        void ClearBarrier()
+        {
+            barrierArmed = false;
+            if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;
         }
 
         /// Host: send a scheduled control swap on the reliable channel. apply_at_tick is a client input-tick so
@@ -321,6 +372,7 @@ namespace JumpNowBro.Networking
                     LevelManager.Instance.LoadFirst();                    // initial-join: host starts the game once the wire is up
             }
             if (state != Session.SessionState.Disconnected) return;
+            ClearBarrier();                                              // don't stay frozen waiting for an ack from a peer that just left
             session = null;
             transport = null;
             if (Role == GameRole.Hosting)
