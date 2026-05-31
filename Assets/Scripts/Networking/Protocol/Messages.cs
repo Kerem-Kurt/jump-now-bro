@@ -87,28 +87,58 @@ namespace JumpNowBro.Networking
         }
     }
 
-    /// EVENT.kind discriminator. v1.4 sends only LevelLoad; v1.6 turns on Swap + Death with applyTick.
+    /// EVENT.kind discriminator. LevelLoad/Swap/Death flow host → client; LevelReady flows client → host
+    /// (the load-barrier ack). The body shape differs per kind — see EventBody.
     public enum EventKind : byte
     {
-        LevelLoad = 0,
-        Swap      = 1,   // reserved (v1.6)
-        Death     = 2,   // reserved (v1.6)
+        LevelLoad  = 0,
+        Swap       = 1,
+        Death      = 2,
+        LevelReady = 3,
     }
 
-    /// EVENT (host → client, reliable). v1.4 supports the LevelLoad variant only; the reader rejects
-    /// unknown kinds defensively so the client's reliable EVENT inbox stays clean of v1.6 message variants.
+    /// EVENT body (reliable channel). A discriminated union keyed on `kind`; each variant validates its own
+    /// length on read. apply_at_tick is a CLIENT input-tick (the one coordinate both ends agree on — see
+    /// DESIGN §8 and the v1.6 plan): the host flips its map when LastConsumedClientTick reaches it, the
+    /// client when its TickClock does.
     public struct EventBody
     {
         public EventKind kind;
-        public byte sceneIndex;                  // LevelLoad payload
+        public byte sceneIndex;     // LevelLoad / LevelReady
+        public uint tick;           // Swap: apply_at_tick · Death: deathTick (both client input-ticks)
+        public ControlMap map;      // Swap: new absolute map · Death: checkpoint map to restore
+        public byte triggerId;      // Swap: which physical SwapTrigger fired (client banner targeting)
 
-        public const int Size = 1 + 1;
+        // Largest variant (Swap) bounds the send scratch buffer; variants write fewer bytes.
+        public const int MaxSize = 1 + 4 + ControlMap.PackedSize + 1;   // = 9
+
+        public static EventBody LevelLoad(byte sceneIndex)  => new EventBody { kind = EventKind.LevelLoad,  sceneIndex = sceneIndex };
+        public static EventBody LevelReady(byte sceneIndex) => new EventBody { kind = EventKind.LevelReady, sceneIndex = sceneIndex };
+        public static EventBody Swap(uint applyTick, ControlMap map, byte triggerId) =>
+            new EventBody { kind = EventKind.Swap, tick = applyTick, map = map, triggerId = triggerId };
+        public static EventBody Death(uint deathTick, ControlMap checkpointMap) =>
+            new EventBody { kind = EventKind.Death, tick = deathTick, map = checkpointMap };
 
         public int Write(Span<byte> dst)
         {
             var w = new ByteWriter(dst);
             w.WriteByte((byte)kind);
-            w.WriteByte(sceneIndex);
+            switch (kind)
+            {
+                case EventKind.LevelLoad:
+                case EventKind.LevelReady:
+                    w.WriteByte(sceneIndex);
+                    break;
+                case EventKind.Swap:
+                    w.WriteUInt(tick);
+                    ControlMap.Pack(map, w.Reserve(ControlMap.PackedSize));
+                    w.WriteByte(triggerId);
+                    break;
+                case EventKind.Death:
+                    w.WriteUInt(tick);
+                    ControlMap.Pack(map, w.Reserve(ControlMap.PackedSize));
+                    break;
+            }
             return w.Position;
         }
 
@@ -116,12 +146,25 @@ namespace JumpNowBro.Networking
         {
             body = default;
             var r = new ByteReader(src);
-            if (!r.TryReadByte(out var k))           return false;
-            if (k > (byte)EventKind.Death)           return false;     // reject unknown kinds
-            if (k != (byte)EventKind.LevelLoad)      return false;     // v1.4: LevelLoad only
+            if (!r.TryReadByte(out var k)) return false;
+            if (k > (byte)EventKind.LevelReady) return false;          // reject kinds we don't define
             body.kind = (EventKind)k;
-            if (!r.TryReadByte(out body.sceneIndex)) return false;
-            return true;
+            switch (body.kind)
+            {
+                case EventKind.LevelLoad:
+                case EventKind.LevelReady:
+                    return r.TryReadByte(out body.sceneIndex);
+                case EventKind.Swap:
+                    if (!r.TryReadUInt(out body.tick)) return false;
+                    if (!r.TryReadBytes(ControlMap.PackedSize, out var sm)) return false;
+                    if (!ControlMap.TryUnpack(sm, out body.map)) return false;
+                    return r.TryReadByte(out body.triggerId);
+                case EventKind.Death:
+                    if (!r.TryReadUInt(out body.tick)) return false;
+                    if (!r.TryReadBytes(ControlMap.PackedSize, out var dm)) return false;
+                    return ControlMap.TryUnpack(dm, out body.map);
+            }
+            return false;
         }
     }
 }

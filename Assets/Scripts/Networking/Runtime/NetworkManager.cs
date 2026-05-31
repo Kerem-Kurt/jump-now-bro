@@ -38,7 +38,7 @@ namespace JumpNowBro.Networking
         UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
         double clock;
-        readonly byte[] eventSendScratch = new byte[EventBody.Size];      // LEVEL_LOAD send buffer; one body fits easily
+        readonly byte[] eventSendScratch = new byte[EventBody.MaxSize];   // sized to the largest EVENT variant (Swap)
 
         // Per-spawn role-aware components — re-bound each PlayerSpawner.OnPlayerSpawned. The dispatch
         // closures (state/input handlers) close over `this`, then read these fields fresh each call, so

@@ -262,34 +262,79 @@ namespace JumpNowBro.Tests
         [Test]
         public void EventBody_LevelLoad_RoundTrip()
         {
-            var body = new EventBody { kind = EventKind.LevelLoad, sceneIndex = 2 };
-            var buf = new byte[EventBody.Size];
-            int n = body.Write(buf);
-            Assert.AreEqual(EventBody.Size, n);
-            Assert.IsTrue(EventBody.TryRead(buf, out var rt));
+            var buf = new byte[EventBody.MaxSize];
+            int n = EventBody.LevelLoad(2).Write(buf);
+            Assert.AreEqual(2, n);                               // kind + sceneIndex
+            Assert.IsTrue(EventBody.TryRead(buf.AsSpan(0, n), out var rt));
             Assert.AreEqual(EventKind.LevelLoad, rt.kind);
             Assert.AreEqual(2, rt.sceneIndex);
         }
 
         [Test]
+        public void EventBody_LevelReady_RoundTrip()
+        {
+            var buf = new byte[EventBody.MaxSize];
+            int n = EventBody.LevelReady(1).Write(buf);
+            Assert.AreEqual(2, n);
+            Assert.IsTrue(EventBody.TryRead(buf.AsSpan(0, n), out var rt));
+            Assert.AreEqual(EventKind.LevelReady, rt.kind);
+            Assert.AreEqual(1, rt.sceneIndex);
+        }
+
+        [Test]
+        public void EventBody_Swap_RoundTrip()
+        {
+            var map = ControlMap.WithSwap(ControlMap.Default, PlayerAction.Dash);
+            var buf = new byte[EventBody.MaxSize];
+            int n = EventBody.Swap(applyTick: 1_234_567u, map, triggerId: 5).Write(buf);
+            Assert.AreEqual(EventBody.MaxSize, n);              // Swap is the largest variant
+            Assert.IsTrue(EventBody.TryRead(buf.AsSpan(0, n), out var rt));
+            Assert.AreEqual(EventKind.Swap, rt.kind);
+            Assert.AreEqual(1_234_567u, rt.tick);
+            Assert.AreEqual(5, rt.triggerId);
+            Assert.AreEqual(InputOwner.P1, rt.map.moveOwner);
+            Assert.AreEqual(InputOwner.P1, rt.map.jumpOwner);
+            Assert.AreEqual(InputOwner.P2, rt.map.dashOwner);
+        }
+
+        [Test]
+        public void EventBody_Death_RoundTrip()
+        {
+            var checkpointMap = ControlMap.WithSwap(ControlMap.Default, PlayerAction.Jump);
+            var buf = new byte[EventBody.MaxSize];
+            int n = EventBody.Death(deathTick: 9_000u, checkpointMap).Write(buf);
+            Assert.AreEqual(1 + 4 + ControlMap.PackedSize, n);  // kind + deathTick + map
+            Assert.IsTrue(EventBody.TryRead(buf.AsSpan(0, n), out var rt));
+            Assert.AreEqual(EventKind.Death, rt.kind);
+            Assert.AreEqual(9_000u, rt.tick);
+            Assert.AreEqual(InputOwner.P2, rt.map.jumpOwner);
+        }
+
+        [Test]
         public void EventBody_UnknownKind_Rejected()
         {
-            // Kind = 99: outside enum range entirely.
+            // Kind = 99: outside the defined enum range.
             Assert.IsFalse(EventBody.TryRead(new byte[] { 99, 0 }, out _));
         }
 
         [Test]
-        public void EventBody_ReservedKindsNotYetSupported_Rejected()
+        public void EventBody_LevelLoadTruncated_Rejected()
         {
-            // v1.4 only supports LevelLoad; Swap (1) and Death (2) are reserved for v1.6.
-            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Swap, 0 }, out _));
-            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Death, 0 }, out _));
+            Assert.IsFalse(EventBody.TryRead(new byte[1] { (byte)EventKind.LevelLoad }, out _));
         }
 
         [Test]
-        public void EventBody_TruncatedBuffer_Rejected()
+        public void EventBody_SwapTruncatedMap_Rejected()
         {
-            Assert.IsFalse(EventBody.TryRead(new byte[1] { (byte)EventKind.LevelLoad }, out _));
+            // kind + full applyTick, but only 2 of the 3 map bytes follow.
+            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Swap, 0, 0, 0, 1, 0, 0 }, out _));
+        }
+
+        [Test]
+        public void EventBody_SwapMalformedMap_Rejected()
+        {
+            // map dashOwner byte = 7 (not in {P1=0, P2=1}) -> ControlMap.TryUnpack rejects.
+            Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Swap, 0, 0, 0, 1, 0, 0, 7, 5 }, out _));
         }
     }
 }
