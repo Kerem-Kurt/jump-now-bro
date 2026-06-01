@@ -82,6 +82,10 @@ namespace JumpNowBro.Gameplay
             renderer.sortingOrder = -1;
         }
 
+        /// Client entry point: the ClientPredictor drives this from predicted EdgeFlags, since the client
+        /// destroys PlayerController and the OnDash subscription above never fires there. Host stays on OnDash.
+        public void PlayDash() => HandleDash();
+
         void HandleDash()
         {
             trail.Clear();

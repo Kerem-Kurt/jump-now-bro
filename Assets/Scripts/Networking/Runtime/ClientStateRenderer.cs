@@ -17,6 +17,10 @@ namespace JumpNowBro.Networking
         uint lastSeenSnapshotTick;
         bool haveSeen;
         bool seededMap;
+        MoveState lastState;                       // previous snapshot's MoveState — for the →Dashing edge that drives client dash juice
+        PlayerEffects effects;
+
+        void Awake() => effects = GetComponent<PlayerEffects>();   // survives the client's PlayerController destroy; null-safe below
 
         public MovementState CurrentState { get; private set; }
         /// Cached so v1.5's predictor can dead-reckon host-owned inputs between snapshots.
@@ -40,6 +44,14 @@ namespace JumpNowBro.Networking
             // v1.5: the ClientPredictor owns the pose now (drives the Rigidbody2D from prediction + reconcile).
             // The v1.4 teleport to body.movementState.pos was removed here; this component is now the STATE
             // decoder + HUD/death side-effects, and the authoritative-state source the predictor reseeds from.
+
+            // Dash juice from the authoritative MoveState transition INTO Dashing. STATE carries this for
+            // every dash regardless of owner — unlike the predictor's EdgeFlags, which only fire for
+            // client-owned actions (host-owned dash edges are stripped by DeadReckonHost). Edge, not
+            // occupancy, so a multi-tick dash fires once. The host drives the same juice via PlayerController.OnDash.
+            if (effects != null && body.movementState.state == MoveState.Dashing && lastState != MoveState.Dashing)
+                effects.PlayDash();
+            lastState = body.movementState.state;
 
             CurrentState           = body.movementState;
             LastRemoteHostFrame    = body.remoteInputFrame;
