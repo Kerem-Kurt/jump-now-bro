@@ -191,5 +191,44 @@ namespace JumpNowBro.Tests
 
             Assert.AreEqual(Session.SessionState.Disconnected, host.State);
         }
+
+        [Test]
+        public void DisconnectReason_LocalLeaveOnSender_PeerLeftOnReceiver()
+        {
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+            var host = new Session(new UdpReliableTransport(cb), isHost: true);
+            client.Start(); host.Start();
+            for (int i = 0; i < 40; i++) { client.Tick(0.05f); host.Tick(0.05f); }
+
+            client.SendGoodbye(GoodbyeReason.Normal);
+            Assert.AreEqual(Session.DisconnectReason.LocalLeave, client.LastDisconnect);   // we initiated
+            for (int i = 0; i < 20; i++) { client.Tick(0.05f); host.Tick(0.05f); }
+            Assert.AreEqual(Session.DisconnectReason.PeerLeft, host.LastDisconnect);       // peer's GOODBYE arrived
+        }
+
+        [Test]
+        public void DisconnectReason_HandshakeFailed_OnConnectTimeout()
+        {
+            var (ca, _) = InMemoryDatagramChannel.Pair();                                  // nothing on the other end
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+            client.Start();
+            for (int i = 0; i < 120; i++) client.Tick(0.05f);                              // past the 4 s connect timeout
+            Assert.AreEqual(Session.DisconnectReason.HandshakeFailed, client.LastDisconnect);
+        }
+
+        [Test]
+        public void DisconnectReason_ConnectionLost_OnPeerSilence()
+        {
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+            var host = new Session(new UdpReliableTransport(cb), isHost: true);
+            client.Start(); host.Start();
+            for (int i = 0; i < 40; i++) { client.Tick(0.05f); host.Tick(0.05f); }
+            Assert.AreEqual(Session.SessionState.Established, client.State, "precondition");
+
+            for (int i = 0; i < 160; i++) client.Tick(0.05f);                              // host silent; 8 s past the 5 s liveness timeout
+            Assert.AreEqual(Session.DisconnectReason.ConnectionLost, client.LastDisconnect);
+        }
     }
 }

@@ -11,6 +11,8 @@ namespace JumpNowBro.Networking
     public sealed class Session
     {
         public enum SessionState { Idle, Connecting, Established, Disconnected }
+        /// Why the session ended — read by the UI to word the disconnect and decide whether to surface it.
+        public enum DisconnectReason { None, LocalLeave, PeerLeft, ConnectionLost, HandshakeFailed }
 
         const double ConnectTimeoutSeconds = 4.0;   // the only FAST teardown for a stuck handshake (RTO exhaustion is far slower)
         const int MaxBody = 24;                     // v1.4 Welcome body = 14 bytes; cushion for v1.5+ extensions
@@ -26,6 +28,7 @@ namespace JumpNowBro.Networking
 
         public SessionState State { get; private set; } = SessionState.Idle;
         public GoodbyeReason LastGoodbye { get; private set; }
+        public DisconnectReason LastDisconnect { get; private set; }
         public float RttSeconds => transport.RttSeconds;
         public event Action<SessionState> OnStateChanged;
         /// Raised on the CLIENT after a valid WELCOME is parsed — carries scene index for mid-game join + peer slot confirmation.
@@ -41,7 +44,7 @@ namespace JumpNowBro.Networking
             this.isHost = isHost;
             this.sceneIndexProvider = sceneIndexProvider;
             this.hostTickProvider = hostTickProvider;
-            transport.OnDisconnected += () => SetState(SessionState.Disconnected);
+            transport.OnDisconnected += () => Disconnect(DisconnectReason.ConnectionLost);
         }
 
         public void Start()
@@ -59,7 +62,7 @@ namespace JumpNowBro.Networking
                 Handle(type, payload);
 
             if (State == SessionState.Connecting && clock - connectingSince > ConnectTimeoutSeconds)
-                SetState(SessionState.Disconnected);
+                Disconnect(DisconnectReason.HandshakeFailed);
         }
 
         public void SendGoodbye(GoodbyeReason reason)
@@ -67,7 +70,7 @@ namespace JumpNowBro.Networking
             if (State == SessionState.Disconnected) return;
             int n = new Goodbye { Reason = reason }.Write(scratch);
             transport.Send(Channel.Reliable, MessageType.Goodbye, scratch.AsSpan(0, n));
-            SetState(SessionState.Disconnected);      // caller pumps one more Tick so the GOODBYE actually flushes
+            Disconnect(DisconnectReason.LocalLeave);  // caller pumps one more Tick so the GOODBYE actually flushes
         }
 
         void Handle(MessageType type, byte[] payload)
@@ -78,7 +81,8 @@ namespace JumpNowBro.Networking
                     bool ok = Hello.TryRead(payload, out var hello)
                               && hello.Magic == SessionProtocol.Magic && hello.Version == SessionProtocol.Version;
                     SendWelcome(ok, ok ? WelcomeReason.Accepted : WelcomeReason.VersionMismatch);
-                    SetState(ok ? SessionState.Established : SessionState.Disconnected);
+                    if (ok) SetState(SessionState.Established);
+                    else Disconnect(DisconnectReason.HandshakeFailed);
                     break;
 
                 case MessageType.Welcome when !isHost:
@@ -86,12 +90,13 @@ namespace JumpNowBro.Networking
                     bool accepted = wellFormed && w.Accepted
                                     && w.Magic == SessionProtocol.Magic && w.Version == SessionProtocol.Version;
                     if (accepted) OnWelcomeReceived?.Invoke(w);   // fires BEFORE state flip so subscribers see Established with welcome in hand
-                    SetState(accepted ? SessionState.Established : SessionState.Disconnected);
+                    if (accepted) SetState(SessionState.Established);
+                    else Disconnect(DisconnectReason.HandshakeFailed);
                     break;
 
                 case MessageType.Goodbye:
                     if (Goodbye.TryRead(payload, out var g)) LastGoodbye = g.Reason;
-                    SetState(SessionState.Disconnected);
+                    Disconnect(DisconnectReason.PeerLeft);
                     break;
 
                 default:
@@ -122,6 +127,14 @@ namespace JumpNowBro.Networking
             };
             int n = welcome.Write(scratch);
             transport.Send(Channel.Reliable, MessageType.Welcome, scratch.AsSpan(0, n));
+        }
+
+        // Single disconnect choke point: stamp the reason (first wins — Disconnected is terminal) then transition.
+        void Disconnect(DisconnectReason reason)
+        {
+            if (State == SessionState.Disconnected) return;
+            LastDisconnect = reason;
+            SetState(SessionState.Disconnected);
         }
 
         void SetState(SessionState s)

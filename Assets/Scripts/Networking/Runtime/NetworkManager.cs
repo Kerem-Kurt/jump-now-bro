@@ -33,6 +33,9 @@ namespace JumpNowBro.Networking
         /// Diagnostics for the connection panel (#91): reliable backlog + malformed-drop count.
         public int PendingReliableCount => transport != null ? transport.PendingReliableCount : 0;
         public int DroppedDatagrams => transport != null ? transport.DroppedDatagrams : 0;
+        /// Connection-loss UX (#90): true while a peer-initiated drop is surfaced (sim paused, overlay up).
+        public bool ConnectionLost => connectionLost;
+        public Session.DisconnectReason LostReason => lostReason;
 
         UdpSocket gameplaySocket;
         #pragma warning disable 0649   // assigned only under UNITY_EDITOR (lag-sim); stays null in player builds
@@ -42,6 +45,8 @@ namespace JumpNowBro.Networking
         Session session;
         UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
+        bool connectionLost;           // #90: a peer drop is being surfaced (paused + overlay) until rejoin/menu
+        Session.DisconnectReason lostReason;
         double clock;
         readonly byte[] eventSendScratch = new byte[EventBody.MaxSize];   // sized to the largest EVENT variant (Swap)
 
@@ -401,19 +406,37 @@ namespace JumpNowBro.Networking
             Debug.Log($"[{Role}] Session: {state}");                      // visibility until ConnectionUI surfaces this
             if (state == Session.SessionState.Established)
             {
+                connectionLost = false;                                   // (re)connected — clear any prior loss overlay + resume the sim
+                if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;
                 transport?.SetPingInterval(1.0);                          // INPUT/STATE keep liveness warm — restore DESIGN §8 PING cadence
                 if (Role == GameRole.Hosting && LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex < 0)
                     LevelManager.Instance.LoadFirst();                    // initial-join: host starts the game once the wire is up
             }
             if (state != Session.SessionState.Disconnected) return;
+
+            var reason = session != null ? session.LastDisconnect : Session.DisconnectReason.None;
             ClearBarrier();                                              // don't stay frozen waiting for an ack from a peer that just left
             session = null;
             transport = null;
             condChannel = null;
+
+            // A local Leave runs the full EndSessionFromUi teardown — nothing to pause or surface. A peer-initiated
+            // drop (their GOODBYE / timeout / exhaustion), or a client that can't reach the host, pauses + surfaces
+            // so the session stays resumable: the host keeps its level/pose/score and listens; the client can Rejoin.
+            // (A host that merely rejected a bad HELLO just keeps listening silently.)
+            bool surface = reason != Session.DisconnectReason.LocalLeave
+                           && !(Role == GameRole.Hosting && reason == Session.DisconnectReason.HandshakeFailed);
+            if (surface)
+            {
+                connectionLost = true;
+                lostReason = reason;
+                if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = true;
+            }
             if (Role == GameRole.Hosting)
             {
-                listening = true;
-                Debug.Log("[Hosting] Listening for a new client...");     // surface the re-arm so the host knows it's still discoverable
+                listening = true;                                        // keep listening so a rejoin resumes into the preserved level
+                Debug.Log(surface ? "[Hosting] Partner disconnected — listening for rejoin..."
+                                  : "[Hosting] Listening for a new client...");
             }
         }
 
@@ -454,6 +477,26 @@ namespace JumpNowBro.Networking
             catch (System.Exception e) { Debug.LogError($"BeginClient failed: {e.Message}"); EndSessionFromUi(); }
         }
 
+        /// Client: reconnect to the same host after a connection loss, resuming into the host's current level via
+        /// the WELCOME scene-index path. connectionLost + SimPaused stay set until the new session establishes (so a
+        /// failed rejoin keeps the overlay up); a successful one clears them in OnSessionStateChanged(Established).
+        public void RejoinFromUi()
+        {
+            if (Role != GameRole.Client || session != null) return;
+            // Drop the stale client and force a fresh scene load on the rejoin's WELCOME/LEVEL_LOAD — the verified
+            // Leave→Join mid-game-join path, minus the return to SinglePlayer. Without this, the old Player stays
+            // bound to the dead transport (its sender/renderer never reach the new socket) and rejoin "connects"
+            // but the character is frozen — especially against a re-hosted host (the #104 stale-wiring case).
+            if (PlayerSpawner.Instance != null && PlayerSpawner.Instance.CurrentPlayerInstance != null)
+                Destroy(PlayerSpawner.Instance.CurrentPlayerInstance);
+            currentClientRenderer = null;
+            LevelManager.Instance?.ResetIndex();
+            discovery?.Dispose(); discovery = null;
+            gameplaySocket?.Dispose(); gameplaySocket = null;            // dispose the stale socket before BeginClient opens a new one
+            try { BeginClient(); }
+            catch (System.Exception e) { Debug.LogError($"Rejoin failed: {e.Message}"); EndSessionFromUi(); }
+        }
+
         public void EndSessionFromUi()
         {
             var s = session;
@@ -472,6 +515,8 @@ namespace JumpNowBro.Networking
             // LoadByIndex's idempotence check (which keys on currentLevelIndex + currentlyLoadedScene).
             // currentlyLoadedScene stays so LoadLevelRoutine can yield on the unload before re-loading.
             LevelManager.Instance?.ResetIndex();
+            if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;   // never leak the connection-loss pause into the next session
+            connectionLost = false;
 
             session = null;
             transport = null;
