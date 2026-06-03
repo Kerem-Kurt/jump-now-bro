@@ -8,17 +8,22 @@ namespace JumpNowBro.Util
     /// Ownership routing is the v1.4 ControlMap.Route (host = P1, client-local = P2). The host frame is
     /// dead-reckoned before routing: host EDGE bits are stripped (never predict a host jump/dash — a false
     /// positive launches the shared body then yanks it back), and host jumpHeld is forced true so a host-owned
-    /// jump's variable-cut never fires on the client. Net effect: the client actively predicts only the
-    /// horizontal axis it can know for host-owned actions; host-owned VERTICAL is authoritative-only, advancing
-    /// by gravity from the STATE-seeded velocity until the next snapshot corrects it.
+    /// jump's variable-cut never fires on the client. Net effect (v1.7 #108): the client no longer extrapolates
+    /// host-owned actions at all — both horizontal and vertical are authoritative-only between snapshots (the body
+    /// advances only by gravity from the STATE-seeded velocity), and VisualSmoothing interpolates toward each STATE.
+    /// The client predicts instantly ONLY the actions it currently owns.
     public static class ClientPrediction
     {
         /// Strip host edges and force jumpHeld so host-owned vertical stays authoritative-only (see class doc).
-        /// moveLeft/moveRight pass through — host-owned horizontal IS dead-reckoned (bounded ~runSpeed*dt/tick).
+        /// As of v1.7 (#108) host horizontal is NO LONGER extrapolated either: under lag, re-applying the host's
+        /// last direction over a 100–300 ms snapshot gap over-/under-shoots on reversals and jitters (a brief host
+        /// tap becomes ~1–3 u of predicted travel, then a yank back). Holding the last authoritative pose and
+        /// letting VisualSmoothing ease toward each STATE (interpolation) is smoother — host-owned motion isn't the
+        /// client's input, so slightly-behind-but-smooth beats instant-but-jittery.
         public static PlayerInputFrame DeadReckonHost(in PlayerInputFrame host) => new PlayerInputFrame
         {
-            moveLeft    = host.moveLeft,
-            moveRight   = host.moveRight,
+            moveLeft    = false,   // #108: don't extrapolate host horizontal — interpolate via smoothing instead
+            moveRight   = false,
             jumpPressed = false,   // never predict a host edge
             dashPressed = false,   // never predict a host edge
             jumpHeld    = true,    // suppress the variable-jump cut for a host-owned jump

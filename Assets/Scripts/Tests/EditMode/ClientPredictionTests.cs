@@ -45,10 +45,10 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
-        public void DeadReckonHost_StripsEdges_ForcesJumpHeld()
+        public void DeadReckonHost_StripsEdgesAndHorizontal_ForcesJumpHeld()
         {
             var dr = ClientPrediction.DeadReckonHost(Frame(right: true, jump: true, held: false, dash: true));
-            Assert.IsTrue(dr.moveRight,    "held level bits pass through");
+            Assert.IsFalse(dr.moveRight,   "#108: host horizontal no longer extrapolated (interpolated via smoothing)");
             Assert.IsFalse(dr.jumpPressed, "host jump edge stripped");
             Assert.IsFalse(dr.dashPressed, "host dash edge stripped");
             Assert.IsTrue(dr.jumpHeld,     "jumpHeld forced true so a host-owned jump's variable-cut never fires");

@@ -8,9 +8,10 @@ namespace JumpNowBro.Util
     /// Rationale for the locked values:
     /// - SmoothingDecayPerTick 0.30 → render offset is ~99% gone in ~13 ticks (~140 ms at 60 Hz): fast enough to
     ///   feel responsive, slow enough that a correction reads as a glide rather than a snap.
-    /// - SnapThreshold 1.5 u → about ¾ of the body height. Below it a correction is plausibly "drift worth
-    ///   easing"; above it the prediction was wrong enough that easing would look like the character sliding, so
-    ///   we cut instantly. (Respawn/level teleports always cut regardless, via Clear().)
+    /// - SnapThreshold 4.0 u (v1.7 #108; was 1.5 on clean LAN) → with host-owned motion now interpolated rather
+    ///   than extrapolated (see ClientPrediction.DeadReckonHost), the per-STATE catch-up under lag is a forward
+    ///   ease of up to ~3 u; the threshold sits above that so it glides instead of teleporting. Client-owned
+    ///   corrections stay sub-u so they're unaffected. (Respawn/level teleports always cut regardless, via Clear().)
     /// - ReplayCap 64 ticks (~1.07 s) → longer than any expected LAN RTT + brief stall, but bounded so a
     ///   post-stall catch-up storm hard-snaps instead of replaying hundreds of ticks (and never reads past the
     ///   128-tick ClientHistory ring).
@@ -24,7 +25,7 @@ namespace JumpNowBro.Util
     public static class PredictionTuning
     {
         public const float SmoothingDecayPerTick = 0.30f;   // ~140 ms blend at 60 Hz
-        public const float SnapThreshold         = 1.5f;    // correction magnitude beyond which we cut, not ease
+        public const float SnapThreshold         = 4.0f;    // v1.7 #108: was 1.5 on clean LAN; raised so host-movement catch-up under lag eases instead of teleporting
         public const int   ReplayCap             = 64;      // max ticks reconciliation will replay before hard-snapping
         public const int   MaxForwardPredictTicks = 64;     // #89: ticks of free-running forward (no fresh STATE) before holding the pose
     }
