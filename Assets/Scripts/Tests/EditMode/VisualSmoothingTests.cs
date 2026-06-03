@@ -18,7 +18,7 @@ namespace JumpNowBro.Tests
         public void Inject_AboveSnapThreshold_ZeroesOffset()
         {
             var v = new VisualSmoothing();
-            v.Inject(2.0f, 0f);                              // 2.0 > 1.5 default → hard cut
+            v.Inject(PredictionTuning.SnapThreshold + 1f, 0f);  // above the snap threshold → hard cut (offset zeroed)
             Assert.AreEqual(0f, v.offsetX, 1e-6f);
             Assert.AreEqual(0f, v.offsetY, 1e-6f);
         }
