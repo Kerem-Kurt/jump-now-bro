@@ -29,7 +29,10 @@ namespace JumpNowBro.Networking
             {
                 GUILayout.Label($"Session: {state.Value}");
                 if (state.Value == Session.SessionState.Established)
-                    GUILayout.Label($"RTT: {net.CurrentRtt * 1000f:F0} ms");
+                {
+                    GUILayout.Label($"RTT: {net.CurrentRtt * 1000f:F0} ms   reliable q: {net.PendingReliableCount}");
+                    if (net.DroppedDatagrams > 0) GUILayout.Label($"dropped datagrams: {net.DroppedDatagrams}");
+                }
             }
             GUILayout.Space(8);
 
@@ -41,6 +44,11 @@ namespace JumpNowBro.Networking
                 GUILayout.Label("Host IP:");
                 ipInput = GUILayout.TextField(ipInput);
                 if (GUILayout.Button("Join"))                  net.BeginClientFromUi(ipInput);
+#if UNITY_EDITOR
+                // Editor-only lag-sim selector: cycle Clean/Fair/Stress before Host/Join. Read at channel build.
+                if (GUILayout.Button($"Sim: {NetworkManager.EditorSimProfile} >"))
+                    NetworkManager.EditorSimProfile = (NetworkManager.LagProfile)(((int)NetworkManager.EditorSimProfile + 1) % 3);
+#endif
             }
             else
             {

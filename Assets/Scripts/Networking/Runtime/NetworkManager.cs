@@ -30,9 +30,12 @@ namespace JumpNowBro.Networking
         public IReliableTransport CurrentTransport => transport;
         /// The host's last-consumed client tick — the clock the swap scheduler keys apply_at_tick on when hosting.
         public uint HostConsumedClientTick => currentHostRemote != null ? currentHostRemote.LastConsumedClientTick : 0u;
+        /// Diagnostics for the connection panel (#91): reliable backlog + malformed-drop count.
+        public int PendingReliableCount => transport != null ? transport.PendingReliableCount : 0;
+        public int DroppedDatagrams => transport != null ? transport.DroppedDatagrams : 0;
 
         UdpSocket gameplaySocket;
-        #pragma warning disable 0649   // wired later by a lag-sim toggle; null until then
+        #pragma warning disable 0649   // assigned only under UNITY_EDITOR (lag-sim); stays null in player builds
         NetworkConditionChannel condChannel;
         #pragma warning restore 0649
         DiscoveryService discovery;
@@ -120,6 +123,27 @@ namespace JumpNowBro.Networking
             if (Instance == this) Instance = null;
         }
 
+#if UNITY_EDITOR
+        // Editor-only network-condition simulator (#91). NOT a serialized/shipped field — selected per
+        // ParrelSync editor process via the ConnectionUI cycle button, read at channel-build time below.
+        // Compiles out of player builds entirely; the live transport is then always the raw socket.
+        public enum LagProfile { Clean, Fair, Stress }
+        public static LagProfile EditorSimProfile = LagProfile.Clean;
+
+        // Wrap the raw datagram channel in the loss/latency sim when a profile is active. Latency is ONE-WAY
+        // (RTT ≈ 2×); host/client use different seeds so the two egress loss streams are uncorrelated.
+        IDatagramChannel WrapForSim(IDatagramChannel inner, bool hostSide)
+        {
+            if (EditorSimProfile == LagProfile.Clean) { condChannel = null; return inner; }
+            (double lat, double jit, double loss) = EditorSimProfile == LagProfile.Fair
+                ? (0.075, 0.020, 0.05)
+                : (0.125, 0.050, 0.10);
+            condChannel = new NetworkConditionChannel(inner, latencySeconds: lat, jitterSeconds: jit,
+                                                      lossProb: loss, seed: hostSide ? 1337 : 7331);
+            return condChannel;
+        }
+#endif
+
         // ---- host lifecycle ----
 
         void BeginHosting()
@@ -156,8 +180,12 @@ namespace JumpNowBro.Networking
 
         void LatchPeer(IPEndPoint peer, byte[] helloDatagram)
         {
-            var ch = new UdpDatagramChannel(gameplaySocket, peer);
-            ch.PreSeed(helloDatagram);                                    // transport processes the validated HELLO immediately
+            var inner = new UdpDatagramChannel(gameplaySocket, peer);
+            inner.PreSeed(helloDatagram);                                 // transport processes the validated HELLO immediately
+            IDatagramChannel ch = inner;
+#if UNITY_EDITOR
+            ch = WrapForSim(inner, hostSide: true);                       // editor-only lag-sim (no-op at Clean)
+#endif
             transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);      // ~5 Hz keepalive — v1.2's only traffic until #76's Established hook flips to 1 Hz
             transport.Logger = msg => Debug.LogWarning($"[net] {msg}");              // surface should-never-happen drops (oversized send)
             // Providers sampled at WELCOME-send time so currentSceneIndex reflects the actual scene
@@ -181,7 +209,11 @@ namespace JumpNowBro.Networking
             gameplaySocket = new UdpSocket(0);                            // ephemeral port: host + client coexist on one machine
             discovery = DiscoveryService.StartClient(discoveryPort);      // host list builds for the connection UI
             var host = new IPEndPoint(IPAddress.Parse(manualHostIp), gameplayPort);
-            var ch = new UdpDatagramChannel(gameplaySocket, host);
+            var inner = new UdpDatagramChannel(gameplaySocket, host);
+            IDatagramChannel ch = inner;
+#if UNITY_EDITOR
+            ch = WrapForSim(inner, hostSide: false);                      // editor-only lag-sim (no-op at Clean)
+#endif
             transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
             transport.Logger = msg => Debug.LogWarning($"[net] {msg}");
             session = new Session(transport, isHost: false);
@@ -377,6 +409,7 @@ namespace JumpNowBro.Networking
             ClearBarrier();                                              // don't stay frozen waiting for an ack from a peer that just left
             session = null;
             transport = null;
+            condChannel = null;
             if (Role == GameRole.Hosting)
             {
                 listening = true;
@@ -442,6 +475,7 @@ namespace JumpNowBro.Networking
 
             session = null;
             transport = null;
+            condChannel = null;
             discovery?.Dispose(); discovery = null;
             gameplaySocket?.Dispose(); gameplaySocket = null;
             listening = false;
