@@ -18,14 +18,15 @@ A 2D LAN co-op platformer where two players share control of one character. Trig
 - LAN broadcast discovery on `255.255.255.255`.
 - RTT-driven retransmission via `PING`/`PONG` sampled once per second.
 - Host owns the `ControlMap`; trigger volumes mutate it and broadcast the change as a reliable `EVENT`.
+- Client input at **60 Hz**, host state at **30 Hz**. Control swaps carry an `apply_at_tick` so both screens flip on the same logical tick rather than ~RTT apart.
 
 ## Status
 
-Phase 1 (single-player local, built solo by Kerem) is playable end-to-end: all three levels, the control-swap mechanic, death/respawn with checkpoints, dash trail and screen-shake juice, and a level-complete summary. Remaining polish (SFX) is deferred. Phase 2 (split network layer with teammate) hasn't started.
+Phase 1 (single-player local) is complete, and Phase 2 (the hand-rolled UDP network layer) is functional end-to-end: LAN host/join with broadcast discovery, host-authoritative simulation, client-side prediction + reconciliation, reliable control-swap / death / level-transition `EVENT`s scheduled to a shared tick, and graceful connection-loss handling with rejoin. It's verified in two-instance testing under an in-editor latency/loss simulator. Remaining work is visual/UX polish (character art, a UGUI connection screen, SFX).
 
 ## Controls
 
-Phase 1 runs on a single keyboard. One character is driven by two input sources; each owns a subset of the actions, and swap triggers reassign ownership mid-level. At the start, Player 1 owns everything — crossing a swap trigger hands an action to Player 2 (the banner is tinted by action while armed, grey once crossed). To play solo, drive both halves of the keyboard yourself.
+One character is driven by two input sources; each owns a subset of the actions, and swap triggers reassign ownership mid-level. At the start, Player 1 owns everything — crossing a swap trigger hands an action to Player 2 (the banner is tinted by action while armed, grey once crossed). **In LAN play, the host drives Player 1 and the client drives Player 2**, each on their own keyboard. **Solo on one machine**, drive both halves of the keyboard yourself.
 
 | Action | Player 1 | Player 2 |
 |---|---|---|
@@ -34,6 +35,23 @@ Phase 1 runs on a single keyboard. One character is driven by two input sources;
 | Dash | Left Ctrl | Right Shift |
 
 Up/down are bound but unused — movement is horizontal-only in the MVP. Touching a hazard or falling off the level respawns you at the last checkpoint; reaching the goal loads the next level; finishing all three shows the death-count summary.
+
+## Network play (LAN)
+
+Start every instance from `Assets/Scenes/Bootstrap.unity`. The in-game panel (top-left) drives the session:
+
+- **Host** — binds the gameplay port and broadcasts a discovery beacon. The host runs the only authoritative simulation and drives Player 1.
+- **Join** — connects to a host and drives Player 2. Enter the host's IP manually (default `127.0.0.1` for same-machine testing); LAN broadcast discovery also surfaces hosts automatically.
+- **Solo** — single-player on one machine (drive both input halves yourself).
+- **Leave** — graceful disconnect back to the menu.
+
+If a peer drops, the surviving side pauses with a "connection lost" overlay: the client can **Rejoin** (resuming into the host's current level) or return to the menu; the host keeps its progress and waits for the rejoin.
+
+**Two-machine play** needs two people — only the focused OS window receives keyboard input, so one keyboard can't drive both halves at once. For solo iteration, [ParrelSync](https://github.com/VeriorPies/ParrelSync) runs two editor instances against `127.0.0.1`.
+
+### Network-condition simulator (testing)
+
+To exercise the netcode under latency/loss, an **editor-only** simulator wraps each instance's outbound channel. In the connection panel's idle menu the `Sim:` button cycles **Clean / Fair / Stress** — set it per instance before Host/Join. Profiles are one-way latency / jitter / loss: **Fair** ≈ 75 ms / 20 ms / 5%, **Stress** ≈ 125 ms / 50 ms / 10% (RTT ≈ 2× the one-way latency). It compiles out of player builds.
 
 ## Building
 
