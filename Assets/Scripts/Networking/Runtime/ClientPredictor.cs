@@ -36,6 +36,7 @@ namespace JumpNowBro.Networking
         bool seeded;
         bool wasDead;
         uint lastReseedSnapshot;
+        int ticksSinceSnapshot;                     // #89: forward-prediction ticks since the last fresh STATE; clamps the run-ahead under stall
         System.Func<uint, ControlMap> mapAt;        // cached once in Bind so Reconcile's per-tick lookup never allocates
 
         public void Bind(ClientInputSender sender, ClientStateRenderer stateRenderer, TickClock tickClock,
@@ -64,7 +65,7 @@ namespace JumpNowBro.Networking
         void FixedUpdate()
         {
             if (sender == null || stateRenderer == null || tickClock == null || rb == null || world == null || tuning == null) return;
-            if (LevelManager.Instance != null && LevelManager.Instance.IsLoading) return;
+            if (LevelManager.Instance != null && (LevelManager.Instance.IsLoading || LevelManager.Instance.SimPaused)) return;
             if (!stateRenderer.HasState) return;                       // nothing authoritative to predict from yet
 
             var authoritative = stateRenderer.CurrentState;
@@ -79,6 +80,7 @@ namespace JumpNowBro.Networking
                 seeded = true;
                 wasDead = true;
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
+                ticksSinceSnapshot = 0;                               // fresh authority resets the staleness clamp
                 HardSnapTo(authoritative);                            // also clears the visual offset (instant cut)
                 return;
             }
@@ -89,6 +91,7 @@ namespace JumpNowBro.Networking
                 predicted = authoritative;
                 wasDead = false;
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
+                ticksSinceSnapshot = 0;                               // fresh authority resets the staleness clamp
                 HardSnapTo(authoritative);
                 return;
             }
@@ -99,7 +102,8 @@ namespace JumpNowBro.Networking
             history.RecordInput(tick, local);                         // record BEFORE reconcile so the now-tick is replayable
 
             var map = mapStore != null ? mapStore.Current : ControlMap.Default;
-            var t = tuning.AsMovementTuning(Time.fixedDeltaTime, fallLimitY);
+            float dt = Mathf.Clamp(Time.fixedDeltaTime, 0.001f, 0.05f);   // defensive: never build tuning / step on a degenerate dt
+            var t = tuning.AsMovementTuning(dt, fallLimitY);
             var host = stateRenderer.LastRemoteHostFrame;
 
             bool newSnapshot = !seeded || stateRenderer.SnapshotTick != lastReseedSnapshot;
@@ -109,15 +113,16 @@ namespace JumpNowBro.Networking
                 // frame absent a new STATE. The gap between this and the reconciled result is the discontinuity to
                 // smooth (and only that; normal motion produces a zero gap).
                 SetBodyOrigin(predicted);
-                var (forward, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, Time.fixedDeltaTime, world);
+                var (forward, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, dt, world);
 
                 // Reconcile: reseed to authority and replay buffered local inputs up through this tick. SetBodyOrigin
                 // re-establishes the cast origin (R2) before each replayed step so replay collision matches the host.
                 var r = ClientPrediction.Reconcile(authoritative, stateRenderer.LastConsumedClientTick, tick,
-                                                   history, mapAt, host, t, Time.fixedDeltaTime, world, SetBodyOrigin);
+                                                   history, mapAt, host, t, dt, world, SetBodyOrigin);
                 predicted = r.State;
                 seeded = true;
                 lastReseedSnapshot = stateRenderer.SnapshotTick;
+                ticksSinceSnapshot = 0;                               // fresh authority resets the staleness clamp
 
                 if (r.HardSnapped) { HardSnapTo(predicted); return; }  // teleport (initial sync / post-stall / post-death hole)
 
@@ -125,8 +130,18 @@ namespace JumpNowBro.Networking
             }
             else
             {
+                ticksSinceSnapshot++;
+                if (ClientPrediction.ShouldHoldForStaleness(ticksSinceSnapshot, PredictionTuning.MaxForwardPredictTicks))
+                {
+                    // STATE has gone stale (heavy loss / stall): stop free-running forward so the body can't sprint
+                    // off and hard-snap back. Hold the last predicted pose; reconcile cuts when a fresh STATE returns.
+                    rb.MovePosition(new Vector2(predicted.posX, predicted.posY));
+                    ApplyVisual();
+                    smoothing.Decay();
+                    return;
+                }
                 SetBodyOrigin(predicted);                              // R2 cast origin for the single forward step
-                var (next, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, Time.fixedDeltaTime, world);
+                var (next, _) = ClientPrediction.PredictStep(predicted, map, local, host, t, dt, world);
                 predicted = next;
                 history.RecordPredicted(tick, next);
             }

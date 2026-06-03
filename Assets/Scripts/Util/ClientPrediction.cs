@@ -39,6 +39,12 @@ namespace JumpNowBro.Util
 
         public const int DefaultReplayCap = PredictionTuning.ReplayCap;
 
+        /// #89: should the predictor keep free-running forward, given how many ticks have elapsed since the last
+        /// fresh STATE? At/beyond the cap, STATE has gone stale (heavy loss / stall) — hold the last pose rather
+        /// than sprint ahead and hard-snap back. Pure so the threshold boundary is unit-tested.
+        public static bool ShouldHoldForStaleness(int ticksSinceSnapshot, int maxForwardTicks)
+            => ticksSinceSnapshot >= maxForwardTicks;
+
         public readonly struct ReconcileResult
         {
             public readonly MovementState State;

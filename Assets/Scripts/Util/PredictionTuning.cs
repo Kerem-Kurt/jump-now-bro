@@ -14,6 +14,10 @@ namespace JumpNowBro.Util
     /// - ReplayCap 64 ticks (~1.07 s) → longer than any expected LAN RTT + brief stall, but bounded so a
     ///   post-stall catch-up storm hard-snaps instead of replaying hundreds of ticks (and never reads past the
     ///   128-tick ClientHistory ring).
+    /// - MaxForwardPredictTicks 64 (#89) → under heavy loss/stall STATE stops arriving and the predictor would
+    ///   otherwise free-run the body forward indefinitely; after this many ticks with no fresh snapshot it holds
+    ///   the last pose instead. Set to ReplayCap so the hold engages right where reconcile would hard-snap
+    ///   anyway. Only reachable under adverse networks (clean LAN delivers a STATE every ~2 ticks); #108 re-tunes.
     ///
     /// NOTE: same-tick prediction (host stays the only tick authority) means there is deliberately NO inputLead
     /// knob — the client predicts at its current tick and reconciles, rather than running ahead of the host.
@@ -22,5 +26,6 @@ namespace JumpNowBro.Util
         public const float SmoothingDecayPerTick = 0.30f;   // ~140 ms blend at 60 Hz
         public const float SnapThreshold         = 1.5f;    // correction magnitude beyond which we cut, not ease
         public const int   ReplayCap             = 64;      // max ticks reconciliation will replay before hard-snapping
+        public const int   MaxForwardPredictTicks = 64;     // #89: ticks of free-running forward (no fresh STATE) before holding the pose
     }
 }

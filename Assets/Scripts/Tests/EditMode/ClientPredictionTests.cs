@@ -35,6 +35,15 @@ namespace JumpNowBro.Tests
         const float Dt = 1f / 60f;
         static readonly PlayerInputFrame Idle = Frame();
 
+        [TestCase(0, 64, false)]
+        [TestCase(63, 64, false)]
+        [TestCase(64, 64, true)]
+        [TestCase(200, 64, true)]
+        public void ShouldHoldForStaleness_HoldsAtOrPastCap(int ticksSinceSnapshot, int cap, bool expectedHold)
+        {
+            Assert.AreEqual(expectedHold, ClientPrediction.ShouldHoldForStaleness(ticksSinceSnapshot, cap));
+        }
+
         [Test]
         public void DeadReckonHost_StripsEdges_ForcesJumpHeld()
         {
