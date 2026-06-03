@@ -37,16 +37,47 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
-        public void NewestUnconsumed_NotOldest_Wins()
+        public void NewestUnconsumed_NotOldest_Wins_ForHeldBits()
         {
+            // Held/level bits come from the NEWEST unconsumed frame, not the oldest. (Edge bits are OR'd —
+            // tested separately; here no frame presses an edge, so this isolates the held-bit semantic.)
             var ring = new NetworkInputRing();
-            ring.Enqueue(1, Frame(jump: true));
-            ring.Enqueue(2, Frame(dash: true));
-            ring.Enqueue(3, Frame(right: true));
+            ring.Enqueue(1, Frame(held: true));                     // jumpHeld on the oldest
+            ring.Enqueue(2, Frame());
+            ring.Enqueue(3, Frame(right: true));                    // moveRight on the newest
             Assert.IsTrue(ring.TryConsumeNewest(out var f, out var tick));
             Assert.AreEqual(3u, tick);                              // newest, not oldest
-            Assert.IsTrue(f.moveRight);
-            Assert.IsFalse(f.jumpPressed);
+            Assert.IsTrue(f.moveRight);                             // held from newest
+            Assert.IsFalse(f.jumpHeld);                             // newest's held bits, not the oldest's
+        }
+
+        [Test]
+        public void EdgeBits_OrdAcrossUnconsumedWindow_HeldFromNewest()
+        {
+            // jump press sits in the OLDEST unconsumed frame; held (moveRight) in the newest. One consume
+            // surfaces BOTH: edge OR'd in, held from newest. (#103)
+            var ring = new NetworkInputRing();
+            ring.Enqueue(5, Frame(jump: true));
+            ring.Enqueue(6, Frame());
+            ring.Enqueue(7, Frame(right: true));
+            Assert.IsTrue(ring.TryConsumeNewest(out var f, out var tick));
+            Assert.AreEqual(7u, tick);                              // newest tick
+            Assert.IsTrue(f.jumpPressed);                           // edge OR'd from tick 5
+            Assert.IsTrue(f.moveRight);                             // held from newest (tick 7)
+        }
+
+        [Test]
+        public void OrdEdge_FiresExactlyOnce()
+        {
+            // All OR'd frames are marked consumed, so an edge does not re-fire on the next consume.
+            var ring = new NetworkInputRing();
+            ring.Enqueue(5, Frame(jump: true));
+            ring.Enqueue(6, Frame(dash: true));
+            ring.Enqueue(7, Frame());
+            Assert.IsTrue(ring.TryConsumeNewest(out var f1, out _));
+            Assert.IsTrue(f1.jumpPressed);
+            Assert.IsTrue(f1.dashPressed);                          // both edges OR'd into one consume
+            Assert.IsFalse(ring.TryConsumeNewest(out _, out _));    // everything consumed — no re-fire
         }
 
         [Test]

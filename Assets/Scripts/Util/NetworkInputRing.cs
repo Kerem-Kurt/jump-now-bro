@@ -1,10 +1,11 @@
 namespace JumpNowBro.Util
 {
     /// Tick-indexed N=8 ring of input frames the host's view of the client's input pulls from.
-    /// Plan-locked semantic: serve the **newest** unconsumed frame on each consume — not the oldest.
-    /// Host catching up after a hitch must use minimum-latency input, not replay stale frames.
-    /// Edges fire exactly once per real frame (consume-once); held bits cache for starvation repeat
-    /// in the caller. Wraparound is out of v1.4 scope (60 Hz × 2.27 years to overflow).
+    /// Plan-locked semantic: serve the **newest** unconsumed frame's HELD bits on each consume — not the
+    /// oldest. Host catching up after a hitch must use minimum-latency input, not replay stale frames.
+    /// EDGE bits (jump/dash) are OR'd across the whole unconsumed window so a press in an older redundancy
+    /// frame survives K-1 consecutive packet drops (#103); all OR'd frames are marked consumed so the edge
+    /// fires exactly once. Wraparound is out of scope (60 Hz × 2.27 years to overflow).
     public sealed class NetworkInputRing
     {
         public const int Capacity = 8;
@@ -61,11 +62,28 @@ namespace JumpNowBro.Util
                 clientTick = 0;
                 return false;
             }
-            slots[bestSlot].consumed = true;
-            LastConsumedClientTick   = bestTick;
-            hasConsumed              = true;
-            frame                    = slots[bestSlot].frame;
-            clientTick               = bestTick;
+
+            // Held bits come from the newest frame, but a real EDGE press (jump/dash) can sit in an OLDER
+            // unconsumed frame when only the last redundancy packet survived (#103). OR every unconsumed-in-
+            // window edge bit into the result, and mark all those slots consumed so the edge fires once.
+            var result = slots[bestSlot].frame;
+            for (int i = 0; i < Capacity; i++)
+            {
+                ref var s = ref slots[i];
+                if (!s.occupied || s.consumed) continue;
+                if (hasConsumed && s.clientTick <= LastConsumedClientTick) continue;
+                if (i != bestSlot)
+                {
+                    result.jumpPressed |= s.frame.jumpPressed;
+                    result.dashPressed |= s.frame.dashPressed;
+                }
+                s.consumed = true;
+            }
+
+            LastConsumedClientTick = bestTick;
+            hasConsumed            = true;
+            frame                  = result;
+            clientTick             = bestTick;
             return true;
         }
     }

@@ -75,13 +75,12 @@ namespace JumpNowBro.Tests
         // ----- end-to-end edge survival -----
 
         [Test]
-        public void DocumentsV14Limit_EdgeInOlderFrame_LostUnderNewestUnconsumed()
+        public void EdgeInOlderFrame_SurvivesK1Drops_ViaEdgeOr()
         {
-            // v1.4 semantic NOTE: newest-unconsumed prefers minimum input latency over edge preservation.
-            // Under K-1 consecutive drops, the late-arriving packet carries the old edge frame, but the
-            // host picks the newest in-window and the older edge is discarded. Acceptable on LAN
-            // (5% loss → ~3e-8 chance of K consecutive drops); revisit in v1.5/v1.6 if stress-testing
-            // surfaces it (OR-edges-across-unconsumed-window is the standard fix).
+            // #103: the edge press at tick 5 rides every redundancy packet 5..10. Drop 5..9, deliver only
+            // packet 10 — the host ring receives frames [5..10] in one bundle. The consume serves tick 10's
+            // HELD bits for minimum latency but OR's the edge bits across the window, so the jump press at
+            // tick 5 survives the K-1 consecutive drops instead of being discarded by newest-unconsumed.
             var sendRing = new InputSendRing();
             var hostRing = new NetworkInputRing();
             var buf = new byte[InputBody.HeaderSize + InputSendRing.K];
@@ -100,8 +99,8 @@ namespace JumpNowBro.Tests
             }
 
             Assert.IsTrue(hostRing.TryConsumeNewest(out var picked, out var tick));
-            Assert.AreEqual(10u, tick);
-            Assert.IsFalse(picked.jumpPressed);                      // edge dropped — documented v1.4 limit
+            Assert.AreEqual(10u, tick);                              // newest tick for held-bit latency
+            Assert.IsTrue(picked.jumpPressed);                       // but the older edge survived via the OR
         }
 
         [Test]
