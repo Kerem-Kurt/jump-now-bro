@@ -163,6 +163,15 @@ namespace JumpNowBro.Tests
             Assert.AreEqual(s.isDead, rt.isDead);
         }
 
+        [Test]
+        public void MovementState_OutOfRangeMoveState_Rejected()
+        {
+            var buf = new byte[MovementState.PackedSize];
+            MovementState.Pack(SampleState(), buf);
+            buf[32] = 99;                                       // corrupt the MoveState byte (valid range 0..3)
+            Assert.IsFalse(MovementState.TryUnpack(buf, out _));
+        }
+
         // ---------- InputBody ----------
 
         [Test]
@@ -335,6 +344,32 @@ namespace JumpNowBro.Tests
         {
             // map dashOwner byte = 7 (not in {P1=0, P2=1}) -> ControlMap.TryUnpack rejects.
             Assert.IsFalse(EventBody.TryRead(new byte[] { (byte)EventKind.Swap, 0, 0, 0, 1, 0, 0, 7, 5 }, out _));
+        }
+
+        // ---------- Fuzz: no wire reader throws on garbage ----------
+
+        [Test]
+        public void Fuzz_NoDeserializerThrows_OnRandomBytes()
+        {
+            var rng = new System.Random(12345);                // fixed seed for a reproducible count; the byte values are irrelevant (we assert only no-throw)
+            Assert.DoesNotThrow(() =>
+            {
+                for (int iter = 0; iter < 5000; iter++)
+                {
+                    var buf = new byte[rng.Next(0, 80)];
+                    rng.NextBytes(buf);
+                    PacketHeader.TryRead(buf, out _);
+                    InputBody.TryRead(buf, out _, out _, out _);
+                    StateBody.TryRead(buf, out _);
+                    EventBody.TryRead(buf, out _);
+                    MovementState.TryUnpack(buf, out _);
+                    ControlMap.TryUnpack(buf, out _);
+                    Hello.TryRead(buf, out _);
+                    Welcome.TryRead(buf, out _);
+                    Goodbye.TryRead(buf, out _);
+                    PlayerInputFrame.Unpack(buf.Length > 0 ? buf[0] : (byte)0);
+                }
+            });
         }
     }
 }

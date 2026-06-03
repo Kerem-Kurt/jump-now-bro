@@ -61,6 +61,16 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
+        public void Reader_OversizedStringLengthPrefix_Rejected()
+        {
+            // Length prefix claims 5000 bytes — over MaxStringLength. Reject without allocating; prefix not consumed.
+            var r = new ByteReader(new byte[] { (byte)(5000 >> 8), (byte)(5000 & 0xFF), 0x41, 0x42 });
+            Assert.IsFalse(r.TryReadString(out var s));
+            Assert.IsNull(s);
+            Assert.AreEqual(4, r.Remaining);
+        }
+
+        [Test]
         public void Writer_Overflow_Throws()
         {
             Assert.Throws<System.ArgumentException>(() =>

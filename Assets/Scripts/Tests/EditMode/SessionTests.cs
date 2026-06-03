@@ -58,6 +58,22 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
+        public void Welcome_OutOfRangeReason_Rejected()
+        {
+            // reason byte (offset 7, after magic+version+accepted) = 99 — outside the WelcomeReason enum.
+            var bytes = new byte[14];
+            new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
+            bytes[7] = 99;
+            Assert.IsFalse(Welcome.TryRead(bytes, out _));
+        }
+
+        [Test]
+        public void Goodbye_OutOfRangeReason_Rejected()
+        {
+            Assert.IsFalse(Goodbye.TryRead(new byte[] { 99 }, out _));   // 99 outside the GoodbyeReason enum
+        }
+
+        [Test]
         public void IsValidHello_AcceptsGood_RejectsBad()
         {
             Assert.IsTrue(SessionProtocol.IsValidHello(BuildHelloDatagram(SessionProtocol.Magic, SessionProtocol.Version)));

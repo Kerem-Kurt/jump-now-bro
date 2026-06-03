@@ -70,6 +70,7 @@ namespace JumpNowBro.Util
             if (!TryReadFloatBE(src, 20, out s.jumpBufferTimer)) return false;
             if (!TryReadFloatBE(src, 24, out s.dashTimer))       return false;
             if (!TryReadFloatBE(src, 28, out s.invulnTimer))     return false;
+            if (src[32] > (byte)MoveState.Dashing) return false;       // out-of-range MoveState byte → malformed
             s.state                = (MoveState)src[32];
             s.facing               = (sbyte)src[33];
             s.freezeTicksRemaining = (sbyte)src[34];

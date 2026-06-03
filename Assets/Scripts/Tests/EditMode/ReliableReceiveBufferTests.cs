@@ -90,6 +90,15 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
+        public void OversizedPayload_Dropped()
+        {
+            var rb = new ReliableReceiveBuffer();
+            rb.Accept(1, MessageType.Event, new byte[4096]);     // way over the per-payload cap
+            Assert.AreEqual(0, rb.BufferedCount);
+            Assert.IsFalse(rb.TryNext(out _, out _));
+        }
+
+        [Test]
         public void Wraparound_DeliversAcrossMax_AndDropsPreWrapDup()
         {
             var rb = new ReliableReceiveBuffer();

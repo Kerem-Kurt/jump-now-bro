@@ -80,6 +80,7 @@ namespace JumpNowBro.Networking
             if (!r.TryReadByte(out var accepted) || !r.TryReadByte(out var reason)) return false;
             if (!r.TryReadByte(out var peerOwner)) return false;
             if (peerOwner > 1) return false;                          // out-of-range enum byte → malformed
+            if (reason > (byte)WelcomeReason.Busy) return false;      // out-of-range enum byte → malformed
             if (!r.TryReadByte(out w.CurrentSceneIndex)) return false;
             if (!r.TryReadUInt(out w.HostTickAtWelcome)) return false;
             w.Accepted = accepted != 0;
@@ -105,6 +106,7 @@ namespace JumpNowBro.Networking
             g = default;
             var r = new ByteReader(src);
             if (!r.TryReadByte(out var reason)) return false;
+            if (reason > (byte)GoodbyeReason.ProtocolError) return false;   // out-of-range enum byte → malformed
             g.Reason = (GoodbyeReason)reason;
             return true;
         }

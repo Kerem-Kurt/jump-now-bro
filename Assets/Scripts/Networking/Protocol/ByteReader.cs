@@ -8,6 +8,10 @@ namespace JumpNowBro.Networking
     /// On a false return the read is all-or-nothing — Position only advances on success.
     public ref struct ByteReader
     {
+        /// Hard cap on a length-prefixed string. Only the discovery beacon's game name uses TryReadString,
+        /// so a multi-KB length prefix is always hostile/garbage — reject it before allocating.
+        public const int MaxStringLength = 256;
+
         readonly ReadOnlySpan<byte> buf;
 
         public ByteReader(ReadOnlySpan<byte> buffer) { buf = buffer; Position = 0; }
@@ -72,6 +76,7 @@ namespace JumpNowBro.Networking
             v = null;
             if (Remaining < 2) return false;
             int len = (buf[Position] << 8) | buf[Position + 1];
+            if (len > MaxStringLength) return false;                  // anti-OOM: reject an absurd length prefix outright
             if (Remaining < 2 + len) return false;                    // all-or-nothing: don't consume the prefix
             v = Encoding.UTF8.GetString(buf.Slice(Position + 2, len));
             Position += 2 + len;

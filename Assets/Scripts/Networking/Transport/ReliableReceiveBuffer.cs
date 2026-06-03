@@ -12,6 +12,7 @@ namespace JumpNowBro.Networking
         struct Msg { public MessageType Type; public byte[] Payload; }
 
         const int MaxBuffered = 256;   // reorder-window guard; unreachable while reliable in-flight is capped far below
+        const int MaxPayloadSize = 512;   // reliable bodies are <= ~24 B; reject a hostile oversized payload outright
 
         readonly Dictionary<ushort, Msg> buffer = new Dictionary<ushort, Msg>();
 
@@ -22,6 +23,7 @@ namespace JumpNowBro.Networking
         public void Accept(ushort seq, MessageType type, ReadOnlySpan<byte> payload)
         {
             if (seq == 0) return;                                       // reserved sentinel
+            if (payload.Length > MaxPayloadSize) return;                // hostile oversized reliable body: drop
             if (SeqMath.IsNewer(NextExpected, seq)) return;             // older than expected: already delivered
             if (buffer.ContainsKey(seq)) return;                        // duplicate still queued ahead of the gap
             if (buffer.Count >= MaxBuffered && seq != NextExpected) return;  // bound the window, but never block the unsticking seq

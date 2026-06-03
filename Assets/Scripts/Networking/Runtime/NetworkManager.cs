@@ -159,6 +159,7 @@ namespace JumpNowBro.Networking
             var ch = new UdpDatagramChannel(gameplaySocket, peer);
             ch.PreSeed(helloDatagram);                                    // transport processes the validated HELLO immediately
             transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);      // ~5 Hz keepalive — v1.2's only traffic until #76's Established hook flips to 1 Hz
+            transport.Logger = msg => Debug.LogWarning($"[net] {msg}");              // surface should-never-happen drops (oversized send)
             // Providers sampled at WELCOME-send time so currentSceneIndex reflects the actual scene
             // the host is on (mid-game join case); 0xFF sentinel means "no level loaded yet".
             session = new Session(transport, isHost: true,
@@ -182,6 +183,7 @@ namespace JumpNowBro.Networking
             var host = new IPEndPoint(IPAddress.Parse(manualHostIp), gameplayPort);
             var ch = new UdpDatagramChannel(gameplaySocket, host);
             transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
+            transport.Logger = msg => Debug.LogWarning($"[net] {msg}");
             session = new Session(transport, isHost: false);
             session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
             session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on

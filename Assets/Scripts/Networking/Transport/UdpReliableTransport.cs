@@ -29,6 +29,8 @@ namespace JumpNowBro.Networking
         double lastReceivedAt;                          // clock of the last inbound datagram (liveness baseline)
         bool connected;
         bool livenessArmed;                             // the silence timeout only runs after the first inbound
+        int droppedDatagrams;                           // malformed / unknown-type inbound, dropped after ack-harvest (diagnostic)
+        int oversizedSends;                             // outbound bodies over the MTU ceiling, dropped (diagnostic)
 
         public UdpReliableTransport(IDatagramChannel channel, double pingIntervalSeconds = 1.0, double silenceTimeoutSeconds = 5.0)
         {
@@ -41,6 +43,11 @@ namespace JumpNowBro.Networking
         public float RttSeconds => rtt.RttSeconds;
         public bool Connected => connected;
         public int PendingReliableCount => sendQueue.PendingCount;   // for tests/diagnostics; not on the interface
+        public int DroppedDatagrams => droppedDatagrams;             // malformed/unknown inbound dropped (diagnostic)
+        public int OversizedSends => oversizedSends;                 // outbound over-MTU drops (diagnostic)
+        /// Loud-log sink for should-never-happen drops (oversized send). Engine-free: the Runtime layer wires
+        /// this to Debug.LogWarning; stays null in CI. Not on the interface.
+        public Action<string> Logger;
         public event Action OnConnected;
         public event Action OnDisconnected;
 
@@ -84,7 +91,12 @@ namespace JumpNowBro.Networking
         {
             bool reliable = IsReliable(type);
             int size = PacketHeader.Size + (reliable ? 2 : 0) + body.Length;
-            if (size > scratch.Length) return;          // oversized: drop (full hardening is the v1.7 pass)
+            if (size > scratch.Length)                  // oversized: drop loudly (no fragmentation — our messages are tiny)
+            {
+                oversizedSends++;
+                Logger?.Invoke($"send dropped: {size} B exceeds {scratch.Length} B MTU ceiling (type {type})");
+                return;
+            }
 
             ackTracker.GenerateAck(out var ack, out var ackBits);
             var header = new PacketHeader { type = type, seq = nextPacketSeq, ack = ack, ackBits = ackBits, timestamp = timestamp };
@@ -99,7 +111,7 @@ namespace JumpNowBro.Networking
 
         void Process(byte[] datagram)
         {
-            if (!PacketHeader.TryRead(datagram, out var h)) return;   // truncated/malformed: drop
+            if (!PacketHeader.TryRead(datagram, out var h)) { droppedDatagrams++; return; }   // truncated/malformed: drop
 
             lastReceivedAt = clock;                                   // any inbound keeps the link alive
             livenessArmed = true;
@@ -117,7 +129,7 @@ namespace JumpNowBro.Networking
             ushort messageSeq = 0;
             if (reliable)
             {
-                if (datagram.Length < offset + 2) return;             // reliable but no room for the message-seq: drop
+                if (datagram.Length < offset + 2) { droppedDatagrams++; return; }   // reliable but no room for the message-seq: drop
                 messageSeq = (ushort)((datagram[offset] << 8) | datagram[offset + 1]);
                 offset += 2;
             }
@@ -132,6 +144,11 @@ namespace JumpNowBro.Networking
                     rtt.AddSample(SecondsSince(h.timestamp));
                     break;
                 default:
+                    if ((byte)h.type > (byte)MessageType.Pong)        // unknown type: drop AFTER acks + liveness harvested above
+                    {
+                        droppedDatagrams++;
+                        break;
+                    }
                     if (reliable)
                     {
                         ackTracker.OnReceived(messageSeq);

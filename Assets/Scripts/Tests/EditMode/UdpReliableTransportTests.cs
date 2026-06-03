@@ -84,5 +84,51 @@ namespace JumpNowBro.Tests
 
             Assert.That(a.RttSeconds, Is.GreaterThan(0f).And.LessThan(0.1f)); // moved off the 0.1 s default to the tiny loopback RTT
         }
+
+        [Test]
+        public void UnknownType_Dropped_AfterAckHarvest()
+        {
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var b = new UdpReliableTransport(cb);
+            // 11-byte header with an out-of-range type byte (99), seq=1; inject raw into b's receive path.
+            var dg = new byte[PacketHeader.Size + 1];
+            dg[0] = 99;
+            dg[2] = 1;                                  // seq lo = 1
+            ca.Send(dg);
+            b.Tick(0.016f);
+            Assert.AreEqual(1, b.DroppedDatagrams);
+            Assert.IsFalse(b.TryReceive(out _, out _));  // not dispatched
+        }
+
+        [Test]
+        public void OversizedSend_CountsAndLogs_DoesNotThrow()
+        {
+            var (ca, _) = InMemoryDatagramChannel.Pair();
+            var a = new UdpReliableTransport(ca);
+            string logged = null;
+            a.Logger = m => logged = m;
+            Assert.DoesNotThrow(() => a.Send(Channel.Unreliable, MessageType.State, new byte[2000]));  // over the 1200 ceiling
+            Assert.GreaterOrEqual(a.OversizedSends, 1);
+            Assert.IsNotNull(logged);
+        }
+
+        [Test]
+        public void Fuzz_RandomDatagrams_NeverThrow()
+        {
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var b = new UdpReliableTransport(cb);
+            var rng = new System.Random(999);
+            Assert.DoesNotThrow(() =>
+            {
+                for (int i = 0; i < 5000; i++)
+                {
+                    var dg = new byte[rng.Next(0, 64)];
+                    rng.NextBytes(dg);
+                    ca.Send(dg);                        // inject raw garbage into b's receive path
+                    b.Tick(0.016f);
+                    while (b.TryReceive(out _, out _)) { }   // drain whatever parsed
+                }
+            });
+        }
     }
 }
