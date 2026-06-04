@@ -44,5 +44,13 @@ namespace JumpNowBro.Gameplay
         {
             if (deathLabel != null) deathLabel.text = $"Deaths: {count}";
         }
+
+        /// Blank the labels on session teardown (Leave). The level scene stays loaded until the next session's
+        /// load (unloading here raced the next load — see LevelManager.ResetIndex), so clear the text in place.
+        public void Clear()
+        {
+            if (levelLabel != null) levelLabel.text = "";
+            if (deathLabel != null) deathLabel.text = "";
+        }
     }
 }

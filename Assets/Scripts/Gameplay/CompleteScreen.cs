@@ -11,8 +11,11 @@ namespace JumpNowBro.Gameplay
         [SerializeField] PlayerSpawner playerSpawner;
         [SerializeField] Color overlayColor = new Color(0f, 0f, 0f, 0.9f);
 
+        public static CompleteScreen Instance { get; private set; }
+
         void Start()
         {
+            Instance = this;
             ConfigurePanel();
             if (summaryLabel != null)
             {
@@ -27,6 +30,7 @@ namespace JumpNowBro.Gameplay
 
         void OnDestroy()
         {
+            if (Instance == this) Instance = null;
             if (LevelManager.Instance != null)
                 LevelManager.Instance.OnAllLevelsComplete -= HandleComplete;
         }
@@ -57,6 +61,13 @@ namespace JumpNowBro.Gameplay
             if (summaryLabel != null)
                 summaryLabel.text = $"Complete!\nDeaths: {deaths}";
             if (panel != null) panel.SetActive(true);
+        }
+
+        /// Hide the overlay on session teardown (Leave). Shown by HandleComplete on all-levels-complete and
+        /// never otherwise dismissed, so leaving from the completed state would strand it on screen (#112).
+        public void HidePanel()
+        {
+            if (panel != null) panel.SetActive(false);
         }
     }
 }

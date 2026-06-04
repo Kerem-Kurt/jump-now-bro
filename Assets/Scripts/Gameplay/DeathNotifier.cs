@@ -35,5 +35,9 @@ namespace JumpNowBro.Gameplay
             Current = newCount;
             OnDeath?.Invoke(newCount);
         }
+
+        /// Silently zero the count on session teardown (Leave) so the next session's HUD starts at 0. Doesn't
+        /// fire OnDeath — that would camera-shake on Leave; the HUD label is cleared separately (LevelHud.Clear).
+        public void Reset() => Current = 0;
     }
 }

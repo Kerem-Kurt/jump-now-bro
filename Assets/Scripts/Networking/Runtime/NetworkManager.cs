@@ -518,6 +518,14 @@ namespace JumpNowBro.Networking
             if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;   // never leak the connection-loss pause into the next session
             connectionLost = false;
 
+            // Clear the end-of-run UI that outlives the session: the persistent CompleteScreen overlay and the
+            // level HUD labels. We do NOT unload the level scene here — a fire-and-forget unload from this path
+            // raced the next load (see LevelManager.ResetIndex); the next session's load clears it. DeathNotifier
+            // is zeroed silently (no OnDeath) so the next session's HUD starts at 0 without a teardown shake.
+            CompleteScreen.Instance?.HidePanel();
+            FindAnyObjectByType<LevelHud>()?.Clear();
+            DeathNotifier.Instance?.Reset();
+
             session = null;
             transport = null;
             condChannel = null;
