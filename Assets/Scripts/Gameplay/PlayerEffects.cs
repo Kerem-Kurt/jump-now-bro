@@ -80,6 +80,10 @@ namespace JumpNowBro.Gameplay
             var renderer = burst.GetComponent<ParticleSystemRenderer>();
             renderer.material = new Material(Shader.Find("Sprites/Default"));
             renderer.sortingOrder = -1;
+
+            // A runtime-built ParticleSystem swallows its first manual Emit() until it has played once;
+            // Play() with emission disabled primes it without emitting, so the first dash burst renders.
+            burst.Play();
         }
 
         /// Client entry point: the ClientPredictor drives this from predicted EdgeFlags, since the client
