@@ -48,6 +48,7 @@ namespace JumpNowBro.Networking
         bool listening;                // host is in the listen-for-HELLO phase
         bool connectionLost;           // #90: a peer drop is being surfaced (paused + overlay) until rejoin/menu
         bool soloActive;               // Solo (no-session single-player) is running — keeps the Leave button up
+        int lastHostedLevelIndex = -1; // #104: a host Leave remembers its level so the next Host resumes it
         Session.DisconnectReason lostReason;
         double clock;
         readonly byte[] eventSendScratch = new byte[EventBody.MaxSize];   // sized to the largest EVENT variant (Swap)
@@ -413,7 +414,11 @@ namespace JumpNowBro.Networking
                 if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;
                 transport?.SetPingInterval(1.0);                          // INPUT/STATE keep liveness warm — restore DESIGN §8 PING cadence
                 if (Role == GameRole.Hosting && LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex < 0)
-                    LevelManager.Instance.LoadFirst();                    // initial-join: host starts the game once the wire is up
+                {
+                    // Resume the level a previous Leave remembered (#104); otherwise start the game at Level_01.
+                    if (lastHostedLevelIndex >= 0) { LevelManager.Instance.LoadByIndex(lastHostedLevelIndex); lastHostedLevelIndex = -1; }
+                    else LevelManager.Instance.LoadFirst();
+                }
             }
             if (state != Session.SessionState.Disconnected) return;
 
@@ -458,6 +463,7 @@ namespace JumpNowBro.Networking
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
             soloActive = true;
+            lastHostedLevelIndex = -1;          // a fresh Solo discards any pending host-resume (#104)
             LevelManager.Instance?.LoadFirst();
         }
 
@@ -474,6 +480,7 @@ namespace JumpNowBro.Networking
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
             if (string.IsNullOrWhiteSpace(hostIp)) return;
+            lastHostedLevelIndex = -1;          // joining as a client discards any pending host-resume (#104)
             Role = GameRole.Client;
             manualHostIp = hostIp;
             Application.runInBackground = true;
@@ -514,6 +521,11 @@ namespace JumpNowBro.Networking
                 Destroy(PlayerSpawner.Instance.CurrentPlayerInstance);
             currentHostRemote = null;
             currentClientRenderer = null;
+
+            // Remember the host's current level so a Leave-then-Host resumes it instead of restarting at Level_01
+            // (#104). ResetIndex below clears CurrentLevelIndex, so capture first; a fresh Solo/Join clears it again.
+            if (Role == GameRole.Hosting && LevelManager.Instance != null && LevelManager.Instance.CurrentLevelIndex >= 0)
+                lastHostedLevelIndex = LevelManager.Instance.CurrentLevelIndex;
 
             // Reset LevelManager's index so the next Solo/Host/Join isn't tricked into a no-op by
             // LoadByIndex's idempotence check (which keys on currentLevelIndex + currentlyLoadedScene).
