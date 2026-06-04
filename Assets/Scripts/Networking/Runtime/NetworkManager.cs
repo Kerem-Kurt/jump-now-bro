@@ -344,6 +344,7 @@ namespace JumpNowBro.Networking
                         // death count + flash still come via STATE.deathCount → DeathNotifier (mid-join-safe).
                         SwapScheduleDriver.Instance?.Scheduler.ResetTo(ev.map);
                         ControlMapStore.Instance?.Apply(ev.map);
+                        SwapTrigger.ReconcileBannersTo(ev.map);   // #111: re-arm post-checkpoint banners on the client
                         break;
                 }
             }

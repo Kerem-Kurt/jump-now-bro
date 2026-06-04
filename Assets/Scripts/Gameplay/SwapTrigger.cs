@@ -70,6 +70,29 @@ namespace JumpNowBro.Gameplay
                 if (t.triggerId == id) { t.fired = true; t.SetBannerArmed(false); }
         }
 
+        /// Reconcile every banner to an authoritative ControlMap — grey iff that action no longer belongs to its
+        /// default owner (P1), armed otherwise. The client drives its banners off this (against the seeding STATE
+        /// map and the DEATH-EVENT checkpoint map) instead of per-instance `fired`, which a scene reload re-arms
+        /// wrongly (#105) and a respawn leaves stuck grey (#111). Correct while each action swaps at most once per
+        /// level (the triggerId convention); a future double-swap level would need the scheduler's applied-list.
+        public static void ReconcileBannersTo(ControlMap map)
+        {
+            foreach (var t in active)
+            {
+                bool swapped = OwnerFor(map, t.actionToSwap) != InputOwner.P1;
+                t.fired = swapped;
+                t.SetBannerArmed(!swapped);
+            }
+        }
+
+        static InputOwner OwnerFor(ControlMap map, PlayerAction action) => action switch
+        {
+            PlayerAction.MoveHorizontal => map.moveOwner,
+            PlayerAction.Jump           => map.jumpOwner,
+            PlayerAction.Dash           => map.dashOwner,
+            _                           => InputOwner.P1,
+        };
+
         void OnTriggerEnter2D(Collider2D other)
         {
             if (fired) return;                      // already scheduled/consumed — a re-cross must not double-schedule

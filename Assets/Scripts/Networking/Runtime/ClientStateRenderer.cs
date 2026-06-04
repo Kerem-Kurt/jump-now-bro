@@ -64,6 +64,11 @@ namespace JumpNowBro.Networking
             {
                 ControlMapStore.Instance.Apply(body.controlMap);
                 seededMap = true;
+                // Freshly-loaded triggers default to armed; a mid-game join or a Leave/Rejoin into a progressed
+                // level must grey the ones already swapped on the host (#105). This seed is the first moment the
+                // authoritative map is known, and this renderer's Player spawned into the loaded scene, so the
+                // triggers are already registered.
+                SwapTrigger.ReconcileBannersTo(body.controlMap);
             }
 
             // Push the cumulative count into DeathNotifier on every STATE — Raise dedups on equal so the
