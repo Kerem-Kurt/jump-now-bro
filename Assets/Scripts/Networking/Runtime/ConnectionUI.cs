@@ -42,10 +42,10 @@ namespace JumpNowBro.Networking
             }
             GUILayout.Space(8);
 
-            bool idle = (state == null || state == Session.SessionState.Disconnected) && net.Role == GameRole.SinglePlayer;
+            bool idle = !net.SoloActive && (state == null || state == Session.SessionState.Disconnected) && net.Role == GameRole.SinglePlayer;
             if (idle)
             {
-                if (GUILayout.Button("Solo (single-player)")) { net.BeginSoloFromUi(); enabled = false; }   // hide once the game starts
+                if (GUILayout.Button("Solo (single-player)")) net.BeginSoloFromUi();
                 if (GUILayout.Button("Host"))                  net.BeginHostingFromUi();
                 GUILayout.Label("Host IP:");
                 ipInput = GUILayout.TextField(ipInput);

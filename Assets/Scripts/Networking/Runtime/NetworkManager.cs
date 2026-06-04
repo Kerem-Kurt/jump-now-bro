@@ -35,6 +35,7 @@ namespace JumpNowBro.Networking
         public int DroppedDatagrams => transport != null ? transport.DroppedDatagrams : 0;
         /// Connection-loss UX (#90): true while a peer-initiated drop is surfaced (sim paused, overlay up).
         public bool ConnectionLost => connectionLost;
+        public bool SoloActive => soloActive;
         public Session.DisconnectReason LostReason => lostReason;
 
         UdpSocket gameplaySocket;
@@ -46,6 +47,7 @@ namespace JumpNowBro.Networking
         UdpReliableTransport transport;                                   // kept on the manager so #78 broadcasters/senders can read it via Instance.CurrentTransport
         bool listening;                // host is in the listen-for-HELLO phase
         bool connectionLost;           // #90: a peer drop is being surfaced (paused + overlay) until rejoin/menu
+        bool soloActive;               // Solo (no-session single-player) is running — keeps the Leave button up
         Session.DisconnectReason lostReason;
         double clock;
         readonly byte[] eventSendScratch = new byte[EventBody.MaxSize];   // sized to the largest EVENT variant (Swap)
@@ -454,6 +456,7 @@ namespace JumpNowBro.Networking
         public void BeginSoloFromUi()
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
+            soloActive = true;
             LevelManager.Instance?.LoadFirst();
         }
 
@@ -517,6 +520,7 @@ namespace JumpNowBro.Networking
             LevelManager.Instance?.ResetIndex();
             if (LevelManager.Instance != null) LevelManager.Instance.SimPaused = false;   // never leak the connection-loss pause into the next session
             connectionLost = false;
+            soloActive = false;
 
             // Clear the end-of-run UI that outlives the session: the persistent CompleteScreen overlay and the
             // level HUD labels. We do NOT unload the level scene here — a fire-and-forget unload from this path
