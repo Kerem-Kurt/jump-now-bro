@@ -100,12 +100,13 @@ namespace JumpNowBro.Tests.PlayMode
 
             var box = playerGo.GetComponent<BoxCollider2D>();
             Assert.IsNotNull(box, "Player lost its BoxCollider2D.");
-            Assert.AreEqual(new Vector2(1f, 2f), box.size, "Player body collider must stay 1x2 — a slime swap must not resize it.");
+            Assert.AreEqual(new Vector2(1f, 1f), box.size, "Player body collider is 1x1 (square, matching the slime).");
+            Assert.AreEqual(new Vector2(0f, 0f), box.offset, "Player collider is centered on the root (which sits at the slime's centre).");
             Assert.IsTrue(playerGo.CompareTag("Player"), "Player must keep the 'Player' tag (triggers detect it by tag).");
 
             var groundCheck = playerGo.transform.Find("GroundCheck");
             Assert.IsNotNull(groundCheck, "Player lost its GroundCheck child.");
-            Assert.AreEqual(new Vector3(0f, -1f, 0f), groundCheck.localPosition, "GroundCheck must stay at the feet (0,-1).");
+            Assert.AreEqual(new Vector3(0f, -0.5f, 0f), groundCheck.localPosition, "GroundCheck sits at the feet (collider bottom, y=-0.5).");
         }
 
         [UnityTest]
