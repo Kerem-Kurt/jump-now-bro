@@ -470,9 +470,10 @@ namespace JumpNowBro.Networking
             if (lm != null) lm.LoadByIndex(lm.PendingStartIndex);   // start at the menu's level pick (default 0)
         }
 
-        public void BeginHostingFromUi()
+        public void BeginHostingFromUi(string lobbyName = null)
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
+            if (!string.IsNullOrWhiteSpace(lobbyName)) gameName = lobbyName.Trim();   // beacon display name for LAN discovery
             Role = GameRole.Hosting;
             Application.runInBackground = true;
             try { BeginHosting(); }

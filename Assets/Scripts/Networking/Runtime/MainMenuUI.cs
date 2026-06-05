@@ -19,7 +19,7 @@ namespace JumpNowBro.Networking
     {
         NetworkManager net;
         GameObject menu, leaveBar;
-        TMP_InputField ipField;
+        TMP_InputField ipField, lobbyField;
         readonly Button[] levelButtons = new Button[3];
         DiscoveryService browse;                                           // passive LAN listener while the menu is up
         GameObject hostList;
@@ -97,10 +97,14 @@ namespace JumpNowBro.Networking
             }
 
             MakeButton(col.transform, "Solo (single-player)", 330, 54, () => { DisposeBrowse(); net.BeginSoloFromUi(); });
-            MakeButton(col.transform, "Host", 330, 54, () => { DisposeBrowse(); net.BeginHostingFromUi(); });
+
+            var hostRow = Row(col.transform, 8);
+            lobbyField = MakeInput(hostRow.transform, "LobbyField", DefaultLobbyName(), 210, 54);
+            lobbyField.characterLimit = 24;
+            MakeButton(hostRow.transform, "Host", 112, 54, () => { DisposeBrowse(); net.BeginHostingFromUi(lobbyField.text); });
 
             var joinRow = Row(col.transform, 8);
-            ipField = MakeInput(joinRow.transform, "127.0.0.1", 210, 54);
+            ipField = MakeInput(joinRow.transform, "IPField", "127.0.0.1", 210, 54);
             MakeButton(joinRow.transform, "Join", 112, 54, () => { DisposeBrowse(); net.BeginClientFromUi(ipField.text); });
 
             Label(col.transform, "LAN games (auto-discovered):", 16, FontStyles.Italic);
@@ -156,7 +160,9 @@ namespace JumpNowBro.Networking
             {
                 string ip = h.Endpoint.Address.ToString();
                 string label = string.IsNullOrEmpty(h.Name) ? ip : $"{h.Name}  {ip}";
-                MakeButton(hostList.transform, label, 330, 38, () => { DisposeBrowse(); net.BeginClientFromUi(ip); });
+                var btn = MakeButton(hostList.transform, label, 330, 38, () => { DisposeBrowse(); net.BeginClientFromUi(ip); });
+                var lt = btn.GetComponentInChildren<TMP_Text>();   // a long lobby name shrinks instead of overflowing the button
+                lt.enableAutoSizing = true; lt.fontSizeMin = 12; lt.fontSizeMax = 20;
             }
         }
 
@@ -231,9 +237,18 @@ namespace JumpNowBro.Networking
             return btn;
         }
 
-        TMP_InputField MakeInput(Transform parent, string value, float w, float h)
+        // The host's discovery-beacon display name defaults to this machine's name, so two LAN hosts don't both
+        // show the generic title; the user can overwrite it before hosting. Truncated to the input's char cap.
+        static string DefaultLobbyName()
         {
-            var go = new GameObject("IPField", typeof(RectTransform));
+            var n = SystemInfo.deviceName;
+            if (string.IsNullOrWhiteSpace(n) || n == SystemInfo.unsupportedIdentifier) return "Jump Now Bro!";
+            return n.Length > 24 ? n.Substring(0, 24) : n;
+        }
+
+        TMP_InputField MakeInput(Transform parent, string name, string value, float w, float h)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
             go.SetActive(false);                                               // configure before TMP_InputField wakes
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
