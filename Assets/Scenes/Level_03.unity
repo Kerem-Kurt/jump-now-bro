@@ -302,6 +302,7 @@ GameObject:
   - component: {fileID: 424147842}
   - component: {fileID: 424147841}
   - component: {fileID: 424147840}
+  - component: {fileID: 1686709569}
   m_Layer: 11
   m_Name: SwapTrigger_Dash
   m_TagString: Untagged
@@ -459,6 +460,7 @@ GameObject:
   - component: {fileID: 648175841}
   - component: {fileID: 648175840}
   - component: {fileID: 648175839}
+  - component: {fileID: 1155819121}
   m_Layer: 11
   m_Name: SwapTrigger_Move
   m_TagString: Untagged
@@ -787,6 +789,7 @@ GameObject:
   - component: {fileID: 1145048771}
   - component: {fileID: 1145048770}
   - component: {fileID: 1145048769}
+  - component: {fileID: 1137996019}
   m_Layer: 11
   m_Name: SwapTrigger_Jump
   m_TagString: Untagged
@@ -1395,3 +1398,54 @@ MonoBehaviour:
   maxDrop: 12
   dropSeconds: 0.45
   sortingOrder: 2
+--- !u!114 &1686709569
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 424147839}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73c5711776464ac38a5d5ae5a18fcef0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  swirlSprite: {fileID: 21300000, guid: aafc967d0fbc944889e083e62818cffd, type: 3}
+  degreesPerSecond: 35
+  size: 1.7
+  sortingOrder: -1
+  tint: {r: 1, g: 1, b: 1, a: 0.4}
+--- !u!114 &1155819121
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 648175838}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73c5711776464ac38a5d5ae5a18fcef0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  swirlSprite: {fileID: 21300000, guid: aafc967d0fbc944889e083e62818cffd, type: 3}
+  degreesPerSecond: 35
+  size: 1.7
+  sortingOrder: -1
+  tint: {r: 1, g: 1, b: 1, a: 0.4}
+--- !u!114 &1137996019
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1145048768}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73c5711776464ac38a5d5ae5a18fcef0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  swirlSprite: {fileID: 21300000, guid: aafc967d0fbc944889e083e62818cffd, type: 3}
+  degreesPerSecond: 35
+  size: 1.7
+  sortingOrder: -1
+  tint: {r: 1, g: 1, b: 1, a: 0.4}
