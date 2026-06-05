@@ -10,6 +10,35 @@ namespace JumpNowBro.Gameplay
         [SerializeField] TMP_Text deathLabel;
         [SerializeField] PlayerSpawner playerSpawner;
 
+        void Start()
+        {
+            // Style + position in code so it reads as a clean HUD: deaths top-right, level top-left under the menu bar.
+            if (deathLabel != null)
+            {
+                var rt = deathLabel.rectTransform;
+                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 1f);
+                rt.anchoredPosition = new Vector2(-18f, -14f);
+                rt.sizeDelta = new Vector2(220f, 36f);
+                deathLabel.enableAutoSizing = false;
+                deathLabel.fontSize = 26;
+                deathLabel.fontStyle = FontStyles.Bold;
+                deathLabel.color = new Color(1f, 0.82f, 0.82f);
+                deathLabel.alignment = TextAlignmentOptions.Right;
+            }
+            if (levelLabel != null)
+            {
+                var rt = levelLabel.rectTransform;
+                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f);
+                rt.anchoredPosition = new Vector2(18f, -64f);
+                rt.sizeDelta = new Vector2(240f, 30f);
+                levelLabel.enableAutoSizing = false;
+                levelLabel.fontSize = 22;
+                levelLabel.fontStyle = FontStyles.Bold;
+                levelLabel.color = new Color(0.78f, 0.85f, 1f);
+                levelLabel.alignment = TextAlignmentOptions.Left;
+            }
+        }
+
         void OnEnable()
         {
             if (playerSpawner != null) playerSpawner.OnPlayerSpawned += HandlePlayerSpawned;
@@ -29,7 +58,14 @@ namespace JumpNowBro.Gameplay
         void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (mode != LoadSceneMode.Additive) return;
-            if (levelLabel != null) levelLabel.text = $"Level: {scene.name}";
+            if (levelLabel != null) levelLabel.text = Pretty(scene.name);
+        }
+
+        // "Level_01" -> "Level 1" (drop the underscore + leading zero).
+        static string Pretty(string sceneName)
+        {
+            var s = sceneName.Replace("Level_0", "Level ").Replace("Level_", "Level ");
+            return s == sceneName ? sceneName : s;
         }
 
         // DeathNotifier.Current is the single source of truth — on Host it's set by PlayerSpawner.Raise(TotalDeaths),
