@@ -417,7 +417,7 @@ namespace JumpNowBro.Networking
                 {
                     // Resume the level a previous Leave remembered (#104); otherwise start the game at Level_01.
                     if (lastHostedLevelIndex >= 0) { LevelManager.Instance.LoadByIndex(lastHostedLevelIndex); lastHostedLevelIndex = -1; }
-                    else LevelManager.Instance.LoadFirst();
+                    else LevelManager.Instance.LoadByIndex(LevelManager.Instance.PendingStartIndex);   // start at the menu's pick
                 }
             }
             if (state != Session.SessionState.Disconnected) return;
@@ -464,7 +464,8 @@ namespace JumpNowBro.Networking
             if (Role != GameRole.SinglePlayer || session != null) return;
             soloActive = true;
             lastHostedLevelIndex = -1;          // a fresh Solo discards any pending host-resume (#104)
-            LevelManager.Instance?.LoadFirst();
+            var lm = LevelManager.Instance;
+            if (lm != null) lm.LoadByIndex(lm.PendingStartIndex);   // start at the menu's level pick (default 0)
         }
 
         public void BeginHostingFromUi()

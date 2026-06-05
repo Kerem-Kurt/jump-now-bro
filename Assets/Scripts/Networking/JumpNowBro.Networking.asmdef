@@ -4,7 +4,9 @@
     "references": [
         "JumpNowBro.Gameplay",
         "JumpNowBro.Util",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

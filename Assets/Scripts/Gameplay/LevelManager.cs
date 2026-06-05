@@ -27,6 +27,8 @@ namespace JumpNowBro.Gameplay
         public const byte AllLevelsCompleteSentinel = 0xFE;
 
         public int CurrentLevelIndex => currentLevelIndex;
+        /// Level the main menu picked; consumed by the Solo/Host start path (level select). Default 0 = Level_01.
+        public int PendingStartIndex { get; set; }
         public string CurrentLevelName =>
             (currentLevelIndex >= 0 && currentLevelIndex < levelSceneNames.Length)
                 ? levelSceneNames[currentLevelIndex] : null;
