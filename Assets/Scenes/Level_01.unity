@@ -130,6 +130,7 @@ GameObject:
   - component: {fileID: 561656298}
   - component: {fileID: 561656297}
   - component: {fileID: 561656296}
+  - component: {fileID: 1730252144}
   m_Layer: 10
   m_Name: Checkpoint_1
   m_TagString: Untagged
@@ -849,3 +850,23 @@ SceneRoots:
   - {fileID: 561656298}
   - {fileID: 1236124732}
   - {fileID: 792280590}
+--- !u!114 &1730252144
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 561656295}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e43b5aab20e643668ec60fbcd8fc4707, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  flagSprite: {fileID: 21300000, guid: c4b4670b9ee28439491b280ff236e306, type: 3}
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 384
+  raiseHeight: 2
+  maxDrop: 12
+  dropSeconds: 0.45
+  sortingOrder: 2
