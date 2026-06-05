@@ -502,7 +502,7 @@ MonoBehaviour:
   actionToSwap: 2
   triggerId: 3
   showBanner: 1
-  armedAlpha: 0.55
+  armedAlpha: 0.9
   firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
   bannerSortingOrder: 1
 --- !u!61 &607477241
@@ -615,12 +615,12 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: b4e048478b9643818e17a6a9dfae4427, type: 3}
   m_Color: {r: 0, g: 0, b: 1, a: 0.39215687}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 1
-  m_Size: {x: 1.5, y: 2}
+  m_Size: {x: 1.5, y: 1.5}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
@@ -844,12 +844,12 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: 9e78b24f484c402e8a17b1f4a0c03b91, type: 3}
   m_Color: {r: 1, g: 1, b: 0, a: 0.50980395}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 1
-  m_Size: {x: 1.5, y: 2}
+  m_Size: {x: 1.5, y: 1.5}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
@@ -869,7 +869,7 @@ MonoBehaviour:
   actionToSwap: 1
   triggerId: 2
   showBanner: 1
-  armedAlpha: 0.55
+  armedAlpha: 0.9
   firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
   bannerSortingOrder: 1
 --- !u!61 &993365382
@@ -1822,12 +1822,12 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: 44f70f6e67b54b7d9292a979ad3c4bcb, type: 3}
   m_Color: {r: 0, g: 1, b: 0.09511155, a: 0.53333336}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 1
-  m_Size: {x: 1.5, y: 2}
+  m_Size: {x: 1.5, y: 1.5}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
@@ -1847,7 +1847,7 @@ MonoBehaviour:
   actionToSwap: 0
   triggerId: 1
   showBanner: 1
-  armedAlpha: 0.55
+  armedAlpha: 0.9
   firedColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
   bannerSortingOrder: 1
 --- !u!61 &2042068526
