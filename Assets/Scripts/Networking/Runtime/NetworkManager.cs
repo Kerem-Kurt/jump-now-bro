@@ -37,6 +37,8 @@ namespace JumpNowBro.Networking
         public bool ConnectionLost => connectionLost;
         public bool SoloActive => soloActive;
         public Session.DisconnectReason LostReason => lostReason;
+        /// Discovery port, so the menu can run its own passive browse (DiscoveryService.StartClient) while idle.
+        public ushort DiscoveryPort => discoveryPort;
 
         UdpSocket gameplaySocket;
         #pragma warning disable 0649   // assigned only under UNITY_EDITOR (lag-sim); stays null in player builds

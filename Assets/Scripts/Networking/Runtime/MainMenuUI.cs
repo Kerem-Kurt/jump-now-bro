@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
@@ -20,6 +21,10 @@ namespace JumpNowBro.Networking
         GameObject menu, leaveBar;
         TMP_InputField ipField;
         readonly Button[] levelButtons = new Button[3];
+        DiscoveryService browse;                                           // passive LAN listener while the menu is up
+        GameObject hostList;
+        float nextHostRefresh;
+        readonly HashSet<string> shownHosts = new HashSet<string>();
 
         void Awake()
         {
@@ -35,6 +40,15 @@ namespace JumpNowBro.Networking
             if (menu.activeSelf != idle) menu.SetActive(idle);
             bool inGame = !idle && !net.ConnectionLost;                          // a loss is owned by ConnectionUI's overlay
             if (leaveBar.activeSelf != inGame) leaveBar.SetActive(inGame);
+
+            if (idle)                                                            // browse the LAN for hosts while the menu is shown
+            {
+                if (browse == null)
+                    try { browse = DiscoveryService.StartClient(net.DiscoveryPort); } catch { browse = null; }
+                browse?.Tick(Time.timeAsDouble);
+                if (Time.time >= nextHostRefresh) { nextHostRefresh = Time.time + 0.5f; RefreshHosts(); }
+            }
+            else DisposeBrowse();                                                // free the discovery port before a session binds it
         }
 
         void SelectLevel(int i)
@@ -82,12 +96,23 @@ namespace JumpNowBro.Networking
                 levelButtons[i] = MakeButton(lvlRow.transform, "Level " + (i + 1), 150, 54, () => SelectLevel(idx));
             }
 
-            MakeButton(col.transform, "Solo (single-player)", 330, 54, () => net.BeginSoloFromUi());
-            MakeButton(col.transform, "Host", 330, 54, () => net.BeginHostingFromUi());
+            MakeButton(col.transform, "Solo (single-player)", 330, 54, () => { DisposeBrowse(); net.BeginSoloFromUi(); });
+            MakeButton(col.transform, "Host", 330, 54, () => { DisposeBrowse(); net.BeginHostingFromUi(); });
 
             var joinRow = Row(col.transform, 8);
             ipField = MakeInput(joinRow.transform, "127.0.0.1", 210, 54);
-            MakeButton(joinRow.transform, "Join", 112, 54, () => net.BeginClientFromUi(ipField.text));
+            MakeButton(joinRow.transform, "Join", 112, 54, () => { DisposeBrowse(); net.BeginClientFromUi(ipField.text); });
+
+            Label(col.transform, "LAN games (auto-discovered):", 16, FontStyles.Italic);
+            hostList = new GameObject("HostList", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            hostList.transform.SetParent(col.transform, false);
+            var hlv = hostList.GetComponent<VerticalLayoutGroup>();
+            hlv.childAlignment = TextAnchor.UpperCenter;
+            hlv.spacing = 4;
+            hlv.childControlWidth = hlv.childControlHeight = true;
+            hlv.childForceExpandWidth = hlv.childForceExpandHeight = false;
+            var hlf = hostList.GetComponent<ContentSizeFitter>();
+            hlf.horizontalFit = hlf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             MakeButton(col.transform, "Quit", 330, 46, () => Application.Quit());
 
@@ -114,6 +139,36 @@ namespace JumpNowBro.Networking
             Stretch(leaveBtn.gameObject);
             leaveBar.SetActive(false);
         }
+
+        // Rebuild the host buttons only when the discovered set changes (avoids per-frame UI churn).
+        void RefreshHosts()
+        {
+            if (hostList == null) return;
+            var hosts = browse?.Hosts;
+            var current = new HashSet<string>();
+            if (hosts != null) foreach (var h in hosts.Hosts) current.Add(h.Endpoint.Address + "|" + h.Name);
+            if (current.SetEquals(shownHosts)) return;
+            shownHosts.Clear();
+            foreach (var c in current) shownHosts.Add(c);
+            foreach (Transform child in hostList.transform) Destroy(child.gameObject);
+            if (hosts == null) return;
+            foreach (var h in hosts.Hosts)
+            {
+                string ip = h.Endpoint.Address.ToString();
+                string label = string.IsNullOrEmpty(h.Name) ? ip : $"{h.Name}  {ip}";
+                MakeButton(hostList.transform, label, 330, 38, () => { DisposeBrowse(); net.BeginClientFromUi(ip); });
+            }
+        }
+
+        void DisposeBrowse()
+        {
+            browse?.Dispose();
+            browse = null;
+            shownHosts.Clear();
+            if (hostList != null) foreach (Transform child in hostList.transform) Destroy(child.gameObject);
+        }
+
+        void OnDisable() => DisposeBrowse();
 
         // ---- tiny UGUI builders ----
 
