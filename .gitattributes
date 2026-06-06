@@ -30,6 +30,11 @@
 *.aseprite filter=lfs diff=lfs merge=lfs -text
 *.ase  filter=lfs diff=lfs merge=lfs -text
 
+# README/docs images stay in regular git, NOT LFS — they're small and render
+# faster/more reliably on GitHub than LFS media (which needs an extra auth'd fetch).
+docs/**/*.gif -filter -diff -merge -text
+docs/**/*.png -filter -diff -merge -text
+
 # === 3D models (just in case) ===
 *.fbx   filter=lfs diff=lfs merge=lfs -text
 *.obj   filter=lfs diff=lfs merge=lfs -text
