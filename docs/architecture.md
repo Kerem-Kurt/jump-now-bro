@@ -4,7 +4,7 @@
 
 The codebase is split into four Unity assembly definitions arranged so the simulation- and
 network-critical logic is **pure, engine-free C#** that compiles and tests without a Unity license.
-`JumpNowBro.Util` is `noEngineReferences` with zero references — the deterministic `Movement.Step` plus the
+`JumpNowBro.Util` is `noEngineReferences` with zero references: the deterministic `Movement.Step` plus the
 client prediction/reconciliation/smoothing logic. `JumpNowBro.Networking` (everything except its `Runtime/`
 folder) is the transport/protocol core: it touches Unity only through a tiny `IDatagramChannel` byte-pipe,
 and even its real `UdpSocket` uses only `System.Net.Sockets`. The thin MonoBehaviour adapters under
@@ -19,18 +19,18 @@ in a headless test.
 
 ```mermaid
 flowchart TB
-  subgraph CORE["Engine-free core — compiled and tested in CI (no Unity license)"]
+  subgraph CORE["Engine-free core, compiled and tested in CI (no Unity license)"]
     direction TB
-    UTIL["JumpNowBro.Util (noEngineReferences) — Movement.Step, ClientPrediction, VisualSmoothing, ControlMap"]
-    NETCORE["JumpNowBro.Networking core — Protocol, Transport, Discovery, Sim"]
-    SOCK["UdpSocket — System.Net.Sockets only, no UnityEngine"]
+    UTIL["JumpNowBro.Util (noEngineReferences), Movement.Step, ClientPrediction, VisualSmoothing, ControlMap"]
+    NETCORE["JumpNowBro.Networking core, Protocol, Transport, Discovery, Sim"]
+    SOCK["UdpSocket, System.Net.Sockets only, no UnityEngine"]
     NETCORE --> UTIL
     NETCORE --> SOCK
   end
-  subgraph UNITY["Unity MonoBehaviour boundary — UnityEngine"]
+  subgraph UNITY["Unity MonoBehaviour boundary, UnityEngine"]
     direction TB
-    RUNTIME["Networking/Runtime — NetworkManager, ClientPredictor, StateBroadcaster"]
-    GAMEPLAY["Gameplay — PlayerController, triggers, UnityCollisionWorld"]
+    RUNTIME["Networking/Runtime, NetworkManager, ClientPredictor, StateBroadcaster"]
+    GAMEPLAY["Gameplay, PlayerController, triggers, UnityCollisionWorld"]
   end
   AUTH["Authority (Func of bool)"]
   CH["IDatagramChannel"]
@@ -44,7 +44,7 @@ flowchart TB
   RUNTIME --> NETCORE
   RUNTIME --> GAMEPLAY
   GAMEPLAY --> UTIL
-  WIRE(["UDP wire — 255.255.255.255 + peer"])
+  WIRE(["UDP wire, 255.255.255.255 + peer"])
   SOCK <-->|"datagrams"| WIRE
 ```
 
@@ -52,32 +52,31 @@ flowchart TB
 
 ## The three seams
 
-- **`Authority`** — a `static Func<bool>` defaulting to host-true. `NetworkManager` registers the real
+- **`Authority`**, a `static Func<bool>` defaulting to host-true. `NetworkManager` registers the real
   check at `Awake`; the four trigger volumes (`SwapTrigger`, `Checkpoint`, `Hazard`, `LevelGoal`) gate
   authoritative mutations on `Authority.IsHost`, so a client's STATE-rendered body fires no local
   swaps/deaths/loads. Because the default is host-true, the same triggers work in single-player and in tests
   with no networking wired up at all.
-- **`IDatagramChannel`** — the raw byte pipe (`Send(ReadOnlySpan<byte>)` / `TryReceive(out byte[])`). Three
+- **`IDatagramChannel`**, the raw byte pipe (`Send(ReadOnlySpan<byte>)` / `TryReceive(out byte[])`). Three
   implementations: `UdpDatagramChannel` over a real `UdpSocket` in play, `NetworkConditionChannel` (the
   editor latency/loss decorator), and a test-only paired in-memory channel with deterministic drop/reorder
   hooks. `UdpReliableTransport` takes the seam in its constructor and never knows which is behind it.
-- **`ICollisionWorld`** — engine-free collision queries (`Grounded` / `SweepX` / `SweepY`) taking explicit
+- **`ICollisionWorld`**, engine-free collision queries (`Grounded` / `SweepX` / `SweepY`) taking explicit
   `(x, y)` so `Movement.Step` is replayable from arbitrary state. `UnityCollisionWorld` (Physics2D) backs it
   in play; the EditMode tests and golden master inject fakes.
 
 The reference graph is strictly one-way: `Networking → { Gameplay, Util }`, `Gameplay → Util`, `Util → ∅`.
-`Util` sits at the bottom and never sees Unity or Gameplay. (`ControlMap` lives in `Util`, not Gameplay —
-that placement is what lets the engine-free transport core pack and route control maps without referencing
+`Util` sits at the bottom and never sees Unity or Gameplay. (`ControlMap` lives in `Util`, not Gameplay, that placement is what lets the engine-free transport core pack and route control maps without referencing
 Gameplay.)
 
 ## Testing & CI
 
 The whole core is engine-free precisely so it can be tested **without a Unity license**. A GitHub Actions
 workflow runs three license-free jobs, each defending a different invariant: `dotnet test` over **239
-plain-NUnit tests** (the same files Unity runs — zero `[UnityTest]`) on net8.0, a **netstandard2.1
+plain-NUnit tests** (the same files Unity runs, zero `[UnityTest]`) on net8.0, a **netstandard2.1
 compile-only** job that catches net8.0-only API calls Unity's NS2.1 would reject, and a `.meta`-pairing
 check. Both compile jobs glob the production sources and explicitly **exclude `Networking/Runtime`**, so the
-day any non-Runtime file imports `UnityEngine` the build breaks — the engine boundary is enforced
+day any non-Runtime file imports `UnityEngine` the build breaks. The engine boundary is enforced
 mechanically, not by convention.
 
 A **tolerance-based golden master** runs a 300-tick scripted input sequence through `Movement.Step` against a
@@ -90,8 +89,8 @@ than the game ships on.
 ```mermaid
 flowchart LR
   SRC["Production sources: Util/** + Networking/** (Runtime/ excluded)"]
-  TESTS["Tests/EditMode/** — 239 plain (Test) cases, 0 (UnityTest)"]
-  subgraph JOBS["GitHub Actions — runs-on ubuntu, no Unity license"]
+  TESTS["Tests/EditMode/**, 239 plain (Test) cases, 0 (UnityTest)"]
+  subgraph JOBS["GitHub Actions, runs-on ubuntu, no Unity license"]
     direction TB
     J1["core-tests: dotnet test, net8.0 + NUnit 3"]
     J2["api-surface: dotnet build, netstandard2.1, compile-only"]
@@ -118,7 +117,7 @@ firing) that can't run headless; they live under `Tests/PlayMode/` and run in th
 
 ```
 Assets/Scripts/
-  Util/                 engine-free core — Movement.Step, ClientPrediction, VisualSmoothing,
+  Util/                 engine-free core, Movement.Step, ClientPrediction, VisualSmoothing,
                         ControlMap, Authority, NetworkInputRing  (no UnityEngine; CI-compiled)
   Networking/
     Protocol/           PacketHeader, ByteReader/Writer, message types, SeqMath
@@ -126,7 +125,7 @@ Assets/Scripts/
                         RttEstimator, IDatagramChannel, UdpSocket, NetworkConditionChannel
     Discovery/          DiscoveryService, LanBeacon, DiscoveredHosts
     Sim/                engine-free timing/scheduling (PendingSwapScheduler, broadcast timing, rings)
-    Runtime/            Unity MonoBehaviour adapters — NetworkManager, ClientInputSender,
+    Runtime/            Unity MonoBehaviour adapters, NetworkManager, ClientInputSender,
                         ClientPredictor, NetworkStateBroadcaster, ClientStateRenderer,
                         SwapScheduleDriver, TickClock, MainMenuUI, ConnectionUI
   Gameplay/             PlayerController, ControlMap store, SwapTrigger, Checkpoint, Hazard,
@@ -135,5 +134,5 @@ Assets/Scripts/
   Tests/PlayMode/       in-editor integration tests
 Assets/Scenes/          Bootstrap + Level_01/02/03
 ci/                     hand-maintained no-Unity test/api-check csproj + check-meta.sh
-.github/workflows/      ci.yml — the three license-free jobs
+.github/workflows/      ci.yml, the three license-free jobs
 ```

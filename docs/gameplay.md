@@ -2,8 +2,7 @@
 
 [← README](../README.md) · [Networking](networking.md) · [Architecture](architecture.md) · **Gameplay**
 
-The character is driven by a single pure, engine-free state-machine step — `JumpNowBro.Util.Movement.Step` —
-which both the host simulation and the client-side predictor call as the **same compiled symbol**. That
+The character is driven by a single pure, engine-free state-machine step, `JumpNowBro.Util.Movement.Step`, which both the host simulation and the client-side predictor call as the **same compiled symbol**. That
 shared determinism is what makes client prediction and reconciliation possible at all (see
 [Networking](networking.md#host-sim--client-prediction--reconciliation)), and it's why the core is
 CI-testable and locked by a 300-tick golden master (see [Architecture](architecture.md#testing--ci)).
@@ -14,7 +13,7 @@ The shared-control mechanic is implemented as pure data: a host-owned `ControlMa
 frames into one `EffectiveInput`, and `SwapTrigger` volumes flip ownership mid-level. Keeping the map
 host-authoritative (the client's copy is HUD-only) means the simulation never reads a value that could be
 stale across the wire. The trigger fires a **static** cross-assembly event, so `Gameplay` never has to
-reference the `Networking` assembly — preserving the clean Phase 1 / Phase 2 boundary.
+reference the `Networking` assembly, preserving the clean Phase 1 / Phase 2 boundary.
 
 ```mermaid
 flowchart LR
@@ -37,7 +36,7 @@ The feel is **Celeste-scoped, not Celeste-complete**: instant-accel horizontal r
 with **variable height** (release-to-halve while rising), **coyote time** and **jump buffering** (both
 0.1 s) to forgive the input side, and a freeze-then-burst **dash** with one charge refunded on landing.
 Wall jump/climb and 8-way dash are explicitly out of scope to keep the state machine small and the netcode
-surface honest — the dash is horizontal-only for the MVP.
+surface honest, the dash is horizontal-only for the MVP.
 
 ```mermaid
 stateDiagram-v2
@@ -67,15 +66,14 @@ presentation layer fires juice and death off explicit edges rather than diffing 
 
 ## Hazards, checkpoints & levels
 
-Hazards (spikes), checkpoints, and the level goal are thin **host-authoritative** trigger volumes — all gated
+Hazards (spikes), checkpoints, and the level goal are thin **host-authoritative** trigger volumes, all gated
 on `Authority.IsHost`, so the client's local collisions never desync state. Deaths arrive on the client via a
 `STATE` death-count delta / `Death` `EVENT`; level loads via a `LevelLoad` `EVENT`. Death routes through one
 0.4 s respawn coroutine (a fall below the fall-limit or a hazard touch both lead there), teleporting to the
 last checkpoint via `transform.position` + `Physics2D.SyncTransforms` so the next-tick collision cast sees
 the new pose immediately.
 
-Three short levels (`Level_01/02/03`) load **additively over a persistent `Bootstrap` scene** — keeping
+Three short levels (`Level_01/02/03`) load **additively over a persistent `Bootstrap` scene**. Keeping
 `Bootstrap` resident (and at build index 0) is what lets the byte-encoded scene index in the protocol stay
-stable, and it's why you always start from `Bootstrap`. Starting tuning constants — run 9, jump 16,
-gravity 50, coyote/buffer 0.1 s, dash 4 units over 0.15 s — live on a `PlayerTuning` ScriptableObject so they
+stable, and it's why you always start from `Bootstrap`. Starting tuning constants (run 9, jump 16, gravity 50, coyote/buffer 0.1 s, dash 4 units over 0.15 s) live on a `PlayerTuning` ScriptableObject so they
 can be iterated without touching code.
