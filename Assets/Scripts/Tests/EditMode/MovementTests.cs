@@ -321,6 +321,38 @@ namespace JumpNowBro.Tests
         }
 
         [Test]
+        public void CornerStick_AirborneIntoCorner_LiftsOverInsteadOfSticking()
+        {
+            var t = DefaultTuning();
+            var w = new FakeCornerStick();
+            // Wedged on the platform's top-left corner: bottom edge at the top (y=2), right edge at the face (x=5).
+            var s = new MovementState { state = MoveState.Falling, facing = 1, posX = 4.5f, posY = 2.5f, velY = -5f };
+            var input = new EffectiveInput { moveDir = 1 };
+
+            (s, _) = Movement.Step(s, input, t, Dt, w);
+
+            Assert.That(s.posX, Is.GreaterThan(4.51f), "corner correction should advance X, not stick at 4.5");
+            Assert.That(s.posY, Is.GreaterThan(2.5f),  "corner correction should lift the body over the corner");
+        }
+
+        [Test]
+        public void CornerCorrect_DoesNotLiftWhenSlidingDownAFullWall()
+        {
+            // Airborne against a full-height wall with the floor far below: SweepX blocks but SweepY does
+            // not (free fall), so the both-axes gate never trips and the body slides down, no phantom lift.
+            var t = DefaultTuning();
+            var w = new FakeWallOnRight();
+            var s = new MovementState { state = MoveState.Falling, facing = 1, posX = 4.5f, posY = 6f, velY = -5f };
+            var input = new EffectiveInput { moveDir = 1 };
+            float startX = s.posX;
+
+            (s, _) = Movement.Step(s, input, t, Dt, w);
+
+            Assert.That(s.posY, Is.LessThan(6f), "should keep falling along the wall");
+            Assert.That(s.posX, Is.LessThanOrEqualTo(startX + 0.001f), "should not be lifted/advanced past the wall");
+        }
+
+        [Test]
         public void OneTileGap_PlayerCenterInGap_FallsThrough()
         {
             var t = DefaultTuning();

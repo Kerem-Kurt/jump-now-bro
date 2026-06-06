@@ -104,9 +104,19 @@ namespace JumpNowBro.Util
                 world.SweepY(s.posX, s.posY, s.velY * dt, out float resolvedDy, out bool blockedY);
                 if (blockedY) s.velY = 0f;
                 s.posY += resolvedDy;
-                world.SweepX(s.posX, s.posY, s.velX * dt, out float resolvedDx, out bool blockedX);
+
+                float wantDx = s.velX * dt;
+                world.SweepX(s.posX, s.posY, wantDx, out float resolvedDx, out bool blockedX);
                 if (blockedX) s.velX = 0f;
                 s.posX += resolvedDx;
+
+                // #102 corner correction. Airborne, pushing horizontally, and both axes blocked: that's
+                // either a corner-on-corner wedge or flush against a full wall. A small upward lift that
+                // frees the horizontal move distinguishes them — only a corner clears, so we lift over it
+                // instead of sticking. A full-height wall never frees (no-op), and flat ground never blocks
+                // X, so WallStop_RunningRight and the v1.3 golden master are unchanged.
+                if (blockedX && blockedY && !grounded && input.moveDir != 0)
+                    CornerCorrect(ref s, wantDx, world);
             }
 
             s.wasJumpHeld = input.jumpHeld;
@@ -131,6 +141,22 @@ namespace JumpNowBro.Util
             s.dashChargeAvailable = false;
             s.velX = 0f; s.velY = 0f;
             edges |= EdgeFlags.DashedThisTick;
+        }
+
+        // #102: probe small upward lifts (up to ~1/4 of the 1-unit body) for one that frees the blocked
+        // horizontal move; apply the first that works so a corner wedge lifts over instead of sticking.
+        const float CornerCorrectMax  = 0.25f;
+        const float CornerCorrectStep = 0.05f;
+
+        static void CornerCorrect(ref MovementState s, float wantDx, ICollisionWorld world)
+        {
+            for (float lift = CornerCorrectStep; lift <= CornerCorrectMax + 1e-4f; lift += CornerCorrectStep)
+            {
+                world.SweepY(s.posX, s.posY, lift, out float upDy, out bool upBlocked);
+                if (upBlocked || upDy < lift - 1e-4f) return;        // something above blocks the lift: give up
+                world.SweepX(s.posX, s.posY + lift, wantDx, out float clearDx, out bool stillBlocked);
+                if (!stillBlocked) { s.posY += lift; s.posX += clearDx; return; }
+            }
         }
     }
 }
