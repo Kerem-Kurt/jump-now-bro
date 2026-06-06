@@ -1,32 +1,63 @@
 # Jump Now Bro!
 
-A 2D LAN co-op platformer where two players share control of one character. Triggers throughout the level swap which player drives which inputs — coordinate or fall.
+> A 2D LAN co-op platformer where **two players share control of one character**. Triggers
+> throughout the level swap which player drives which inputs — coordinate or fall.
 
-**Applied Networks final project.** The interesting part is the hand-rolled UDP networking layer underneath the game; the game itself exists as a vehicle for that.
+**Applied Networks final project.** The game is a vehicle for the interesting part: a **hand-rolled
+UDP networking stack** — protocol design, a custom reliability layer, LAN discovery, client-side
+prediction, and a reliable event channel that carries the control-swaps. No Netcode for GameObjects,
+no Mirror, no Photon, no Unity multiplayer services. Every byte on the wire is custom code over
+`System.Net.Sockets.UdpClient`.
+
+![Jump Now Bro — gameplay](docs/img/gameplay.gif)
+
+## Highlights
+
+- **Host-authoritative listen-server** over raw UDP — one machine runs the only simulation; the other
+  forwards input and renders state.
+- **Reliability keyed on a per-*message* sequence number** (not the packet sequence), so a reliable
+  control-swap survives loss and reordering *without* head-of-line-blocking the unreliable input/state
+  stream on the same socket.
+- **Two channels by strict discipline:** `INPUT`/`STATE` are lossy latest-wins; `HELLO`/`EVENT`/`GOODBYE`
+  are sequenced, acked, and retransmitted.
+- **Input survives loss with redundancy, not retransmission** — a K=6 window + edge-bit OR-ing lands a
+  jump/dash press through several consecutive drops.
+- **Client-side prediction + reconciliation** on the deterministic movement core; host-owned motion
+  *interpolated* (not extrapolated) so it never jitters or rubber-bands on reversals.
+- **Control swaps apply on a shared client-input-tick**, so both HUDs flip on the *same logical tick*,
+  not ~RTT apart.
+- **The whole netcode + simulation core is engine-free C#**, unit-tested in a **no-Unity CI** (no Unity
+  license) with a golden-master determinism check.
 
 ## Stack
 
-- **Engine:** Unity 6.4 (6000.4.7f1), Universal 2D / URP
+- **Engine:** Unity 6.4 (6000.4.7f1), Universal 2D / URP — rendering, physics, input polling, main loop only.
 - **Language:** C#
-- **Networking:** raw UDP via `System.Net.Sockets.UdpClient` with a custom reliability layer on top. No Unity multiplayer libraries (no Netcode for GameObjects, no Mirror, no Photon).
+- **Networking:** raw UDP via `System.Net.Sockets.UdpClient` with a custom reliability layer on top.
 
-## Architecture (TL;DR)
+## The mechanic: shared control
 
-- Host-authoritative listen-server — one player hosts and runs the only authoritative simulation; the other connects as a client.
-- Fixed 11-byte packet header (type, seq, ack, ack-bits, timestamp).
-- Two channels: unreliable (`INPUT`, `STATE`) and reliable (`HELLO`, `EVENT`, `PING`, `GOODBYE`).
-- LAN broadcast discovery on `255.255.255.255`.
-- RTT-driven retransmission via `PING`/`PONG` sampled once per second.
-- Host owns the `ControlMap`; trigger volumes mutate it and broadcast the change as a reliable `EVENT`.
-- Client input at **60 Hz**, host state at **30 Hz**. Control swaps carry an `apply_at_tick` so both screens flip on the same logical tick rather than ~RTT apart.
+The character has a small fixed action set — **Move (left/right)**, **Jump**, **Dash**. A host-owned
+`ControlMap` assigns each action to a player (P1 or P2); exactly one player owns each action at any
+instant. Invisible **swap triggers** reassign ownership mid-platforming, so the moment-to-moment skill
+check is *verbal coordination* as much as execution. At the start P1 owns everything; crossing a swap
+trigger hands an action to P2.
 
-## Status
+```mermaid
+flowchart LR
+    P1["Player 1 frame"] --> ROUTE{"ControlMap.Route<br/>(host-authoritative)"}
+    P2["Player 2 frame"] --> ROUTE
+    ROUTE -->|"move owner"| EFF["EffectiveInput"]
+    ROUTE -->|"jump owner"| EFF
+    ROUTE -->|"dash owner"| EFF
+    EFF --> STEP["Movement.Step (deterministic)"]
+    STEP --> BODY["One shared character"]
+    SWAP["SwapTrigger volume"] -->|"flip action owner"| ROUTE
+    STEP -.->|"same symbol"| CLIENT["Client predictor replay"]
+```
 
-Phase 1 (single-player local) is complete, and Phase 2 (the hand-rolled UDP network layer) is functional end-to-end: LAN host/join with broadcast discovery, host-authoritative simulation, client-side prediction + reconciliation, reliable control-swap / death / level-transition `EVENT`s scheduled to a shared tick, and graceful connection-loss handling with rejoin. It's verified in two-instance testing under an in-editor latency/loss simulator. Remaining work is visual/UX polish (character art, a UGUI connection screen, SFX).
-
-## Controls
-
-One character is driven by two input sources; each owns a subset of the actions, and swap triggers reassign ownership mid-level. At the start, Player 1 owns everything — crossing a swap trigger hands an action to Player 2 (the banner is tinted by action while armed, grey once crossed). **In LAN play, the host drives Player 1 and the client drives Player 2**, each on their own keyboard. **Solo on one machine**, drive both halves of the keyboard yourself.
+In **LAN play the host drives Player 1 and the client drives Player 2**, each on their own keyboard.
+**Solo on one machine**, you drive both halves yourself.
 
 | Action | Player 1 | Player 2 |
 |---|---|---|
@@ -34,39 +65,104 @@ One character is driven by two input sources; each owns a subset of the actions,
 | Jump | Left Shift | Space |
 | Dash | Left Ctrl | Right Shift |
 
-Up/down are bound but unused — movement is horizontal-only in the MVP. Touching a hazard or falling off the level respawns you at the last checkpoint; reaching the goal loads the next level; finishing all three shows the death-count summary.
+## How it's built (at a glance)
 
-## Network play (LAN)
+Every byte of the netcode and the simulation it drives lives in **pure, engine-free C#** that compiles
+and tests without a Unity license. Unity dependencies are *inverted, not imported*: the MonoBehaviour
+layer registers real implementations back into the core through three narrow seams (`Authority`,
+`IDatagramChannel`, `ICollisionWorld`).
 
-Start every instance from `Assets/Scenes/Bootstrap.unity`. The in-game panel (top-left) drives the session:
+```mermaid
+flowchart TB
+  subgraph CORE["Engine-free core — compiled and tested in CI (no Unity license)"]
+    direction TB
+    UTIL["JumpNowBro.Util (noEngineReferences) — Movement.Step, ClientPrediction, VisualSmoothing, ControlMap"]
+    NETCORE["JumpNowBro.Networking core — Protocol, Transport, Discovery, Sim"]
+    SOCK["UdpSocket — System.Net.Sockets only, no UnityEngine"]
+    NETCORE --> UTIL
+    NETCORE --> SOCK
+  end
+  subgraph UNITY["Unity MonoBehaviour boundary — UnityEngine"]
+    direction TB
+    RUNTIME["Networking/Runtime — NetworkManager, ClientPredictor, StateBroadcaster"]
+    GAMEPLAY["Gameplay — PlayerController, triggers, UnityCollisionWorld"]
+  end
+  AUTH["Authority (Func of bool)"]
+  CH["IDatagramChannel"]
+  COL["ICollisionWorld"]
+  RUNTIME -->|"RegisterIsHost"| AUTH
+  RUNTIME -->|"UdpDatagramChannel / NetworkConditionChannel"| CH
+  GAMEPLAY -->|"UnityCollisionWorld"| COL
+  AUTH -.->|"read by triggers"| GAMEPLAY
+  CH -.->|"injected into UdpReliableTransport"| NETCORE
+  COL -.->|"drives Movement.Step"| UTIL
+  RUNTIME --> NETCORE
+  RUNTIME --> GAMEPLAY
+  GAMEPLAY --> UTIL
+  WIRE(["UDP wire — 255.255.255.255 + peer"])
+  SOCK <-->|"datagrams"| WIRE
+```
 
-- **Host** — binds the gameplay port and broadcasts a discovery beacon. The host runs the only authoritative simulation and drives Player 1.
-- **Join** — connects to a host and drives Player 2. Enter the host's IP manually (default `127.0.0.1` for same-machine testing); LAN broadcast discovery also surfaces hosts automatically.
+## Documentation
+
+The deep dives — with the full set of diagrams — live in [`docs/`](docs/):
+
+- **[Networking](docs/networking.md)** — the hand-rolled UDP stack: packet format, the per-message
+  reliability layer, INPUT redundancy, client prediction & reconciliation, the control-swap `EVENT`,
+  session lifecycle & LAN discovery. *(The core of the project.)*
+- **[Architecture](docs/architecture.md)** — the engine-free, CI-tested core; the asmdef boundary and
+  the three inversion seams; the no-Unity CI and golden-master determinism test; project structure.
+- **[Gameplay & movement](docs/gameplay.md)** — Celeste-tight feel, the deterministic movement state
+  machine, and the shared-control design.
+
+## Running it
+
+### Build & play
+
+1. Install **Unity 6.4 (6000.4.7f1)** via Unity Hub.
+2. Unity Hub → **Add** → select the cloned repo.
+3. Open `Assets/Scenes/Bootstrap.unity` and press **Play** — it loads Level 1 additively and spawns the
+   player. *Always start from `Bootstrap`*; the persistent managers live there.
+4. For a standalone build, use **File → Build Profiles** (macOS or Windows). The scene list (`Bootstrap`
+   at index 0 + the three levels) is already configured.
+
+> Cloning with sprites intact needs **Git LFS installed before `git clone`** (binary assets are
+> LFS-tracked). If you cloned without it: `git lfs install && git lfs pull`.
+
+### LAN play
+
+Start every instance from `Bootstrap.unity`; the main menu drives the session:
+
+- **Host** — set a **lobby name** (defaults to the machine name), then host. Binds the gameplay port,
+  broadcasts the discovery beacon, runs the only authoritative simulation, and drives Player 1.
+- **Join** — pick a host from the auto-discovered **LAN games** list, or enter the host's IP manually
+  (default `127.0.0.1` for same-machine testing). The client drives Player 2.
 - **Solo** — single-player on one machine (drive both input halves yourself).
-- **Leave** — graceful disconnect back to the menu.
+- **Leave** — graceful disconnect (sends `GOODBYE`) back to the menu.
 
-If a peer drops, the surviving side pauses with a "connection lost" overlay: the client can **Rejoin** (resuming into the host's current level) or return to the menu; the host keeps its progress and waits for the rejoin.
+If a peer drops, the surviving side pauses with a "connection lost" overlay: the client can **Rejoin**
+(resuming into the host's current level) or return to the menu; the host keeps its progress and waits.
 
-**Two-machine play** needs two people — only the focused OS window receives keyboard input, so one keyboard can't drive both halves at once. For solo iteration, [ParrelSync](https://github.com/VeriorPies/ParrelSync) runs two editor instances against `127.0.0.1`.
+**Two-machine play** needs two people — only the focused OS window receives keyboard input. For solo
+iteration, [ParrelSync](https://github.com/VeriorPies/ParrelSync) runs two editor instances against
+`127.0.0.1`.
 
 ### Network-condition simulator (testing)
 
-To exercise the netcode under latency/loss, an **editor-only** simulator wraps each instance's outbound channel. In the connection panel's idle menu the `Sim:` button cycles **Clean / Fair / Stress** — set it per instance before Host/Join. Profiles are one-way latency / jitter / loss: **Fair** ≈ 75 ms / 20 ms / 5%, **Stress** ≈ 125 ms / 50 ms / 10% (RTT ≈ 2× the one-way latency). It compiles out of player builds.
+An **editor-only** simulator wraps each instance's outbound channel to inject latency/loss. In the menu's
+idle state the `Sim:` button cycles **Clean / Fair / Stress** — set it per instance before Host/Join.
+Profiles are one-way latency / jitter / loss: **Fair** ≈ 75 ms / 20 ms / 5%, **Stress** ≈ 125 ms / 50 ms
+/ 10% (RTT ≈ 2× the one-way latency). It compiles out of player builds. See
+[docs/networking.md](docs/networking.md#session-lifecycle-lan-discovery--failure-recovery) for details.
 
-## Building
+## Status
 
-1. Install Unity 6.4 (6000.4.7f1) via Unity Hub.
-2. Open this folder in Unity Hub → "Add" → select the cloned repo.
-3. Open `Assets/Scenes/Bootstrap.unity` and press **Play** — it loads Level 1 additively and spawns the player. Always start from Bootstrap; the persistent managers live there, so playing a level scene on its own won't spawn anything.
-4. To produce a standalone build, use **File → Build Profiles** for a Mac (IL2CPP) or Windows (Mono) target.
-
-## Repo Layout
-
-- `Assets/` — all Unity content (scripts, scenes, sprites, settings)
-- `Packages/` — Unity package manifest
-- `ProjectSettings/` — Unity project-wide settings
-- `.gitignore`, `.gitattributes` — Unity-tuned, with Git LFS for binary assets
-- `CLAUDE.md` — design + conventions reference for AI assistants
+Phase 1 (single-player, local) and Phase 2 (the hand-rolled UDP layer) are both complete: LAN host/join
+with broadcast discovery and named lobbies, host-authoritative simulation, client-side prediction +
+reconciliation, reliable control-swap / death / level-transition `EVENT`s scheduled to a shared tick,
+graceful connection-loss handling with rejoin, and a visual pass (slime/stone/portals, a UGUI main
+menu). Verified in two-instance testing under the in-editor latency/loss simulator and on a real
+two-machine LAN.
 
 ## License
 
