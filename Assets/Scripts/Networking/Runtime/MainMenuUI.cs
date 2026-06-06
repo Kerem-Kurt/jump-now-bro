@@ -7,19 +7,21 @@ using JumpNowBro.Gameplay;
 
 namespace JumpNowBro.Networking
 {
-    /// Code-built UGUI main menu (the #99 step — replaces ConnectionUI's IMGUI entry panel). Shows on game-open:
-    /// level select (1/2/3) + Solo / Host / Join+IP / Quit, plus a small in-session Leave bar. Level select sets
-    /// LevelManager.PendingStartIndex, consumed by NetworkManager's Solo/Host start; the client follows the host
-    /// via WELCOME, so there's no protocol change. ConnectionUI keeps only the connection-lost overlay.
+    /// Code-built UGUI main menu (the #99 UI). Shows on game-open: level select (1/2/3) + Solo / Host / Join+IP /
+    /// Quit, plus a small in-session Leave bar and the connection-lost overlay (which replaces the old ConnectionUI
+    /// IMGUI box). Level select sets LevelManager.PendingStartIndex, consumed by NetworkManager's Solo/Host start;
+    /// the client follows the host via WELCOME, so there's no protocol change.
     ///
-    /// Built in code (TMP for crisp text at any scale + layout groups) so it needs no scene authoring — it attaches
+    /// Built in code (TMP for crisp text at any scale + layout groups) so it needs no scene authoring: it attaches
     /// to the Manager and raises its own Canvas. Shown while idle, hidden in-session, reshown after Leave/win.
     [RequireComponent(typeof(NetworkManager))]
     public sealed class MainMenuUI : MonoBehaviour
     {
         NetworkManager net;
-        GameObject menu, leaveBar;
+        GameObject menu, leaveBar, lostOverlay;
         TMP_InputField ipField, lobbyField;
+        TMP_Text lostTitle, lostMsg, lostWaitLabel;
+        Button lostRejoinBtn;
         readonly Button[] levelButtons = new Button[3];
         DiscoveryService browse;                                           // passive LAN listener while the menu is up
         GameObject hostList;
@@ -38,8 +40,15 @@ namespace JumpNowBro.Networking
             var s = net.CurrentSessionState;
             bool idle = !net.SoloActive && (s == null || s == Session.SessionState.Disconnected) && net.Role == GameRole.SinglePlayer;
             if (menu.activeSelf != idle) menu.SetActive(idle);
-            bool inGame = !idle && !net.ConnectionLost;                          // a loss is owned by ConnectionUI's overlay
+            bool inGame = !idle && !net.ConnectionLost;                          // a loss is owned by the connection-lost overlay below
             if (leaveBar.activeSelf != inGame) leaveBar.SetActive(inGame);
+
+            bool lost = net.ConnectionLost;
+            if (lostOverlay.activeSelf != lost)
+            {
+                if (lost) RefreshLostOverlay();                                  // role + reason vary per drop
+                lostOverlay.SetActive(lost);
+            }
 
             if (idle)                                                            // browse the LAN for hosts while the menu is shown
             {
@@ -142,6 +151,59 @@ namespace JumpNowBro.Networking
             var leaveBtn = MakeButton(leaveBar.transform, "Leave", 120, 44, () => net.EndSessionFromUi());
             Stretch(leaveBtn.gameObject);
             leaveBar.SetActive(false);
+
+            BuildLostOverlay(canvasGo.transform);
+        }
+
+        // Connection-lost overlay (replaces ConnectionUI's IMGUI box): a full-screen dim behind a centered
+        // card, shown while net.ConnectionLost. The client gets Rejoin + Return to menu; the host gets a
+        // "waiting for rejoin" line + Return to menu. RefreshLostOverlay sets role/reason text each time.
+        void BuildLostOverlay(Transform canvas)
+        {
+            lostOverlay = Panel(canvas, new Color(0f, 0f, 0f, 0.6f));
+            Stretch(lostOverlay);
+
+            var card = new GameObject("Card", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+            card.transform.SetParent(lostOverlay.transform, false);
+            card.GetComponent<Image>().color = new Color(0.10f, 0.12f, 0.18f, 0.98f);
+            var vl = card.GetComponent<VerticalLayoutGroup>();
+            vl.childAlignment = TextAnchor.MiddleCenter;
+            vl.spacing = 10;
+            vl.padding = new RectOffset(30, 30, 24, 24);
+            vl.childControlWidth = vl.childControlHeight = true;
+            vl.childForceExpandWidth = vl.childForceExpandHeight = false;
+            var fit = card.GetComponent<ContentSizeFitter>();
+            fit.horizontalFit = fit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var rt = card.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+
+            lostTitle     = Label(card.transform, "Connection lost", 30, FontStyles.Bold);
+            lostMsg       = Label(card.transform, "", 19, FontStyles.Normal);
+            lostWaitLabel = Label(card.transform, "Waiting for the other player to rejoin...", 17, FontStyles.Italic);
+            lostRejoinBtn = MakeButton(card.transform, "Rejoin", 320, 50, () => net.RejoinFromUi());
+            MakeButton(card.transform, "Return to menu", 320, 50, () => net.EndSessionFromUi());
+            lostOverlay.SetActive(false);
+        }
+
+        void RefreshLostOverlay()
+        {
+            bool host = net.Role == GameRole.Hosting;
+            lostTitle.text = host ? "Partner disconnected" : "Connection lost";
+            lostMsg.text   = ReasonText(net.LostReason);
+            lostWaitLabel.gameObject.SetActive(host);                            // host waits for the client to rejoin
+            lostRejoinBtn.gameObject.SetActive(!host);                           // only the client initiates a rejoin
+        }
+
+        static string ReasonText(Session.DisconnectReason r)
+        {
+            switch (r)
+            {
+                case Session.DisconnectReason.PeerLeft:        return "The other player left.";
+                case Session.DisconnectReason.ConnectionLost:  return "The connection timed out.";
+                case Session.DisconnectReason.HandshakeFailed: return "Could not reach the host.";
+                default:                                       return "";
+            }
         }
 
         // Rebuild the host buttons only when the discovered set changes (avoids per-frame UI churn).
