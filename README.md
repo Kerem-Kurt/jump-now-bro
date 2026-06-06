@@ -9,7 +9,9 @@ prediction, and a reliable event channel that carries the control-swaps. No Netc
 no Mirror, no Photon, no Unity multiplayer services. Every byte on the wire is custom code over
 `System.Net.Sockets.UdpClient`.
 
-![Jump Now Bro — gameplay](docs/img/gameplay.gif)
+<p align="center">
+  <img src="docs/img/gameplay.gif" alt="Jump Now Bro — gameplay" width="720">
+</p>
 
 ## Highlights
 
