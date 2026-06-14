@@ -20,8 +20,9 @@ namespace JumpNowBro.Networking
         NetworkManager net;
         GameObject menu, leaveBar, lostOverlay;
         TMP_InputField ipField, lobbyField;
-        TMP_Text lostTitle, lostMsg, lostWaitLabel;
+        TMP_Text lostTitle, lostMsg, lostWaitLabel, pingLabel;
         Button lostRejoinBtn;
+        float nextPingRefresh;
         readonly Button[] levelButtons = new Button[3];
         DiscoveryService browse;                                           // passive LAN listener while the menu is up
         GameObject hostList;
@@ -42,6 +43,18 @@ namespace JumpNowBro.Networking
             if (menu.activeSelf != idle) menu.SetActive(idle);
             bool inGame = !idle && !net.ConnectionLost;                          // a loss is owned by the connection-lost overlay below
             if (leaveBar.activeSelf != inGame) leaveBar.SetActive(inGame);
+
+            bool showPing = inGame && net.Role != GameRole.SinglePlayer;         // RTT only exists with a peer, not in Solo
+            if (pingLabel.gameObject.activeSelf != showPing) pingLabel.gameObject.SetActive(showPing);
+            if (showPing && Time.time >= nextPingRefresh)
+            {
+                nextPingRefresh = Time.time + 0.25f;
+                int ms = Mathf.RoundToInt(net.CurrentRtt * 1000f);
+                pingLabel.text = $"Ping {ms} ms";
+                pingLabel.color = ms < 60 ? new Color(0.45f, 0.90f, 0.45f)
+                                : ms < 120 ? new Color(1f, 0.82f, 0.35f)
+                                :            new Color(1f, 0.5f, 0.4f);
+            }
 
             bool lost = net.ConnectionLost;
             if (lostOverlay.activeSelf != lost)
@@ -151,6 +164,15 @@ namespace JumpNowBro.Networking
             var leaveBtn = MakeButton(leaveBar.transform, "Leave", 120, 44, () => net.EndSessionFromUi());
             Stretch(leaveBtn.gameObject);
             leaveBar.SetActive(false);
+
+            // In-session RTT readout, top-left (networked sessions only; Solo has no peer). Colour-coded by latency.
+            pingLabel = Label(canvasGo.transform, "", 18, FontStyles.Bold);
+            var prt = pingLabel.rectTransform;
+            prt.anchorMin = prt.anchorMax = prt.pivot = new Vector2(0f, 1f);
+            prt.anchoredPosition = new Vector2(18f, -98f);
+            prt.sizeDelta = new Vector2(170f, 26f);
+            pingLabel.alignment = TextAlignmentOptions.Left;
+            pingLabel.gameObject.SetActive(false);
 
             BuildLostOverlay(canvasGo.transform);
         }
