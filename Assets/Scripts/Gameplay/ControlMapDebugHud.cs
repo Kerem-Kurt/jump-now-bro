@@ -13,22 +13,31 @@ namespace JumpNowBro.Gameplay
         [SerializeField] TMP_Text jumpLabel;
         [SerializeField] TMP_Text dashLabel;
 
+        ControlMap currentMap = ControlMap.Default;   // cached so a PlayerIdentity change can re-render without a swap
+
         void Start()
         {
             BuildBackground();
             Place(moveLabel, -190f);
             Place(jumpLabel, 0f);
             Place(dashLabel, 190f);
-            if (ControlMapStore.Instance == null) return;
-            ControlMapStore.Instance.OnChanged += UpdateLabels;
-            UpdateLabels(ControlMapStore.Instance.Current);
+            PlayerIdentity.OnChanged += Refresh;                              // names/colours may arrive after this HUD starts
+            if (ControlMapStore.Instance != null)
+            {
+                ControlMapStore.Instance.OnChanged += UpdateLabels;
+                UpdateLabels(ControlMapStore.Instance.Current);
+            }
+            else Refresh();
         }
 
         void OnDestroy()
         {
+            PlayerIdentity.OnChanged -= Refresh;
             if (ControlMapStore.Instance != null)
                 ControlMapStore.Instance.OnChanged -= UpdateLabels;
         }
+
+        void Refresh() => UpdateLabels(currentMap);
 
         static void Place(TMP_Text t, float x)
         {
@@ -37,8 +46,9 @@ namespace JumpNowBro.Gameplay
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 1f);   // top-centre band
             rt.anchoredPosition = new Vector2(x, -14f);
             rt.sizeDelta = new Vector2(180f, 36f);
-            t.enableAutoSizing = false;
-            t.fontSize = 26;
+            t.enableAutoSizing = true;            // a long display name shrinks instead of overflowing the strip
+            t.fontSizeMin = 14;
+            t.fontSizeMax = 26;
             t.fontStyle = FontStyles.Bold;
             t.color = Color.white;
             t.alignment = TextAlignmentOptions.Center;
@@ -62,10 +72,14 @@ namespace JumpNowBro.Gameplay
 
         void UpdateLabels(ControlMap map)
         {
-            // action name in its colour, owner in white
-            if (moveLabel != null) moveLabel.text = $"<color=#73E68C>MOVE</color>  {map.moveOwner}";
-            if (jumpLabel != null) jumpLabel.text = $"<color=#FFB840>JUMP</color>  {map.jumpOwner}";
-            if (dashLabel != null) dashLabel.text = $"<color=#73CCFF>DASH</color>  {map.dashOwner}";
+            // action name in its fixed colour (the "what"); owner name in that player's colour (the "who")
+            currentMap = map;
+            if (moveLabel != null) moveLabel.text = $"<color=#73E68C>MOVE</color>  {Owner(map.moveOwner)}";
+            if (jumpLabel != null) jumpLabel.text = $"<color=#FFB840>JUMP</color>  {Owner(map.jumpOwner)}";
+            if (dashLabel != null) dashLabel.text = $"<color=#73CCFF>DASH</color>  {Owner(map.dashOwner)}";
         }
+
+        static string Owner(InputOwner o)
+            => $"<color=#{ColorUtility.ToHtmlStringRGB(PlayerIdentity.ColorOf(o))}>{PlayerIdentity.NameOf(o)}</color>";
     }
 }

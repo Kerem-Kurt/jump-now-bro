@@ -10,7 +10,7 @@ namespace JumpNowBro.Networking
     public static class SessionProtocol
     {
         public const uint Magic = 0x4A4E4252;   // 'J' 'N' 'B' 'R'
-        public const ushort Version = 1;
+        public const ushort Version = 2;         // v2: HELLO/WELCOME now carry a display name + colour index (#114, #125)
 
         /// Validate a raw inbound datagram as a well-formed, current-version HELLO — used by the host's
         /// listen phase before it commits to a peer. HELLO rides the reliable channel, so its body sits
@@ -29,12 +29,16 @@ namespace JumpNowBro.Networking
     {
         public uint Magic;
         public ushort Version;
+        public byte ColorIndex;                  // v2: client's assigned colour slot (#125)
+        public string Name;                      // v2: client's display name (#114)
 
         public int Write(Span<byte> dst)
         {
             var w = new ByteWriter(dst);
             w.WriteUInt(Magic);
             w.WriteUShort(Version);
+            w.WriteByte(ColorIndex);
+            w.WriteString(Name);
             return w.Position;
         }
 
@@ -42,7 +46,8 @@ namespace JumpNowBro.Networking
         {
             h = default;
             var r = new ByteReader(src);
-            return r.TryReadUInt(out h.Magic) && r.TryReadUShort(out h.Version);
+            return r.TryReadUInt(out h.Magic) && r.TryReadUShort(out h.Version)
+                   && r.TryReadByte(out h.ColorIndex) && r.TryReadString(out h.Name);
         }
     }
 
@@ -58,6 +63,8 @@ namespace JumpNowBro.Networking
         public InputOwner PeerOwner;             // v1.4: always P2 — host owns P1 by convention
         public byte CurrentSceneIndex;           // host's LevelManager.CurrentLevelIndex; 0xFF if pre-load
         public uint HostTickAtWelcome;           // v1.4 logs only; v1.5+ may seed offset estimation here
+        public byte ColorIndex;                  // v2: host's assigned colour slot (#125)
+        public string Name;                      // v2: host's display name (#114)
 
         public int Write(Span<byte> dst)
         {
@@ -69,6 +76,8 @@ namespace JumpNowBro.Networking
             w.WriteByte((byte)PeerOwner);
             w.WriteByte(CurrentSceneIndex);
             w.WriteUInt(HostTickAtWelcome);
+            w.WriteByte(ColorIndex);
+            w.WriteString(Name);
             return w.Position;
         }
 
@@ -83,6 +92,8 @@ namespace JumpNowBro.Networking
             if (reason > (byte)WelcomeReason.Busy) return false;      // out-of-range enum byte → malformed
             if (!r.TryReadByte(out w.CurrentSceneIndex)) return false;
             if (!r.TryReadUInt(out w.HostTickAtWelcome)) return false;
+            if (!r.TryReadByte(out w.ColorIndex)) return false;
+            if (!r.TryReadString(out w.Name)) return false;
             w.Accepted = accepted != 0;
             w.Reason = (WelcomeReason)reason;
             w.PeerOwner = (InputOwner)peerOwner;

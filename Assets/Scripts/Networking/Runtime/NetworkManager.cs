@@ -52,6 +52,8 @@ namespace JumpNowBro.Networking
         bool soloActive;               // Solo (no-session single-player) is running — keeps the Leave button up
         int lastHostedLevelIndex = -1; // #104: a host Leave remembers its level so the next Host resumes it
         Session.DisconnectReason lostReason;
+        string localPlayerName = "";   // #114: this player's display name from the menu (stamped into HELLO/WELCOME)
+        byte localColorIndex;          // #125: assigned colour slot — host = 0, client = 1
         double clock;
         readonly byte[] eventSendScratch = new byte[EventBody.MaxSize];   // sized to the largest EVENT variant (Swap)
 
@@ -205,9 +207,12 @@ namespace JumpNowBro.Networking
                     var idx = LevelManager.Instance != null ? LevelManager.Instance.CurrentLevelIndex : -1;
                     return idx >= 0 && idx < 0xFF ? (byte)idx : (byte)0xFF;
                 },
-                hostTickProvider: () => TickClock.Instance != null ? TickClock.Instance.Current : 0u);
+                hostTickProvider: () => TickClock.Instance != null ? TickClock.Instance.Current : 0u,
+                localNameProvider: () => localPlayerName,
+                localColorProvider: () => localColorIndex);
             session.OnStateChanged += OnSessionStateChanged;
             session.OnGameplayMessage += OnGameplayMessageDispatch;
+            session.OnHelloReceived += OnHostHelloReceived;               // learn the client's name/colour for the HUD
             session.Start();                                              // queues WELCOME; flushes on the next session.Tick
             listening = false;
         }
@@ -226,7 +231,9 @@ namespace JumpNowBro.Networking
 #endif
             transport = new UdpReliableTransport(ch, pingIntervalSeconds: 0.2);
             transport.Logger = msg => Debug.LogWarning($"[net] {msg}");
-            session = new Session(transport, isHost: false);
+            session = new Session(transport, isHost: false,
+                localNameProvider: () => localPlayerName,
+                localColorProvider: () => localColorIndex);
             session.OnStateChanged += OnSessionStateChanged;              // subscribe BEFORE Start so we observe Idle->Connecting
             session.OnWelcomeReceived += OnClientWelcomeReceived;         // mid-game join: load whichever scene host is on
             session.OnGameplayMessage += OnGameplayMessageDispatch;
@@ -460,9 +467,19 @@ namespace JumpNowBro.Networking
         {
             if (w.PeerOwner != JumpNowBro.Util.InputOwner.P2)
                 Debug.LogWarning($"[Client] WELCOME peerOwner={w.PeerOwner}, expected P2 — version skew?");
+            // Identity: the client is P2; the host (P1) just told us its name/colour in the WELCOME (#114, #125).
+            PlayerIdentity.Set(InputOwner.P1, w.Name, w.ColorIndex);
+            PlayerIdentity.Set(InputOwner.P2, localPlayerName, localColorIndex);
             // currentSceneIndex == 0xFF means host hasn't loaded yet; LoadByIndex is a no-op in that case.
             // The LEVEL_LOAD EVENT path (lands in #78) drives the initial-join client scene load.
             LevelManager.Instance?.LoadByIndex(w.CurrentSceneIndex);
+        }
+
+        // Host side: the client (P2) just identified itself in its HELLO; the host is P1.
+        void OnHostHelloReceived(Hello h)
+        {
+            PlayerIdentity.Set(InputOwner.P1, localPlayerName, localColorIndex);
+            PlayerIdentity.Set(InputOwner.P2, h.Name, h.ColorIndex);
         }
 
         // ---- UI API ----
@@ -472,25 +489,30 @@ namespace JumpNowBro.Networking
             if (Role != GameRole.SinglePlayer || session != null) return;
             soloActive = true;
             lastHostedLevelIndex = -1;          // a fresh Solo discards any pending host-resume (#104)
+            PlayerIdentity.Reset();             // solo shows the P1/P2 labels with the default slot colours
             var lm = LevelManager.Instance;
             if (lm != null) lm.LoadByIndex(lm.PendingStartIndex);   // start at the menu's level pick (default 0)
         }
 
-        public void BeginHostingFromUi(string lobbyName = null)
+        public void BeginHostingFromUi(string lobbyName = null, string playerName = null)
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
             if (!string.IsNullOrWhiteSpace(lobbyName)) gameName = lobbyName.Trim();   // beacon display name for LAN discovery
+            localPlayerName = playerName ?? "";   // host's in-game display name (#114)
+            localColorIndex = 0;                  // host = slot 0 (#125)
             Role = GameRole.Hosting;
             Application.runInBackground = true;
             try { BeginHosting(); }
             catch (System.Exception e) { Debug.LogError($"BeginHosting failed: {e.Message}"); EndSessionFromUi(); }
         }
 
-        public void BeginClientFromUi(string hostIp)
+        public void BeginClientFromUi(string hostIp, string playerName = null)
         {
             if (Role != GameRole.SinglePlayer || session != null) return;
             if (string.IsNullOrWhiteSpace(hostIp)) return;
             lastHostedLevelIndex = -1;          // joining as a client discards any pending host-resume (#104)
+            localPlayerName = playerName ?? "";   // client's in-game display name (#114)
+            localColorIndex = 1;                  // client = slot 1 (#125)
             Role = GameRole.Client;
             manualHostIp = hostIp;
             Application.runInBackground = true;
@@ -552,6 +574,7 @@ namespace JumpNowBro.Networking
             CompleteScreen.Instance?.HidePanel();
             FindAnyObjectByType<LevelHud>()?.Clear();
             DeathNotifier.Instance?.Reset();
+            PlayerIdentity.Reset();                                            // next session starts from the P1/P2 defaults
 
             session = null;
             transport = null;

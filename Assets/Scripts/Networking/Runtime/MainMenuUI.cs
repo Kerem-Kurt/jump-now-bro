@@ -19,7 +19,7 @@ namespace JumpNowBro.Networking
     {
         NetworkManager net;
         GameObject menu, leaveBar, lostOverlay;
-        TMP_InputField ipField, lobbyField;
+        TMP_InputField ipField, lobbyField, nameField;
         TMP_Text lostTitle, lostMsg, lostWaitLabel, pingLabel, statusBanner;
         Button lostRejoinBtn;
         float nextPingRefresh;
@@ -128,14 +128,18 @@ namespace JumpNowBro.Networking
 
             MakeButton(col.transform, "Solo (single-player)", 330, 54, () => { DisposeBrowse(); net.BeginSoloFromUi(); });
 
+            Label(col.transform, "Your name (shown to your partner):", 16, FontStyles.Italic);
+            nameField = MakeInput(col.transform, "NameField", DefaultPlayerName(), 330, 50);
+            nameField.characterLimit = 16;
+
             var hostRow = Row(col.transform, 8);
             lobbyField = MakeInput(hostRow.transform, "LobbyField", DefaultLobbyName(), 210, 54);
             lobbyField.characterLimit = 24;
-            MakeButton(hostRow.transform, "Host", 112, 54, () => { DisposeBrowse(); net.BeginHostingFromUi(lobbyField.text); });
+            MakeButton(hostRow.transform, "Host", 112, 54, () => { DisposeBrowse(); net.BeginHostingFromUi(lobbyField.text, nameField.text); });
 
             var joinRow = Row(col.transform, 8);
             ipField = MakeInput(joinRow.transform, "IPField", "127.0.0.1", 210, 54);
-            MakeButton(joinRow.transform, "Join", 112, 54, () => { DisposeBrowse(); net.BeginClientFromUi(ipField.text); });
+            MakeButton(joinRow.transform, "Join", 112, 54, () => { DisposeBrowse(); net.BeginClientFromUi(ipField.text, nameField.text); });
 
             Label(col.transform, "LAN games (auto-discovered):", 16, FontStyles.Italic);
             hostList = new GameObject("HostList", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
@@ -264,7 +268,7 @@ namespace JumpNowBro.Networking
             {
                 string ip = h.Endpoint.Address.ToString();
                 string label = string.IsNullOrEmpty(h.Name) ? ip : $"{h.Name}  {ip}";
-                var btn = MakeButton(hostList.transform, label, 330, 38, () => { DisposeBrowse(); net.BeginClientFromUi(ip); });
+                var btn = MakeButton(hostList.transform, label, 330, 38, () => { DisposeBrowse(); net.BeginClientFromUi(ip, nameField.text); });
                 var lt = btn.GetComponentInChildren<TMP_Text>();   // a long lobby name shrinks instead of overflowing the button
                 lt.enableAutoSizing = true; lt.fontSizeMin = 12; lt.fontSizeMax = 20;
             }
@@ -348,6 +352,15 @@ namespace JumpNowBro.Networking
             var n = SystemInfo.deviceName;
             if (string.IsNullOrWhiteSpace(n) || n == SystemInfo.unsupportedIdentifier) return "Jump Now Bro!";
             return n.Length > 24 ? n.Substring(0, 24) : n;
+        }
+
+        // Pre-fill the player-name field with the machine name (capped to the field's 16-char limit), so a
+        // session has a sensible display name even if the player never edits it. Falls back to "Player".
+        static string DefaultPlayerName()
+        {
+            var n = SystemInfo.deviceName;
+            if (string.IsNullOrWhiteSpace(n) || n == SystemInfo.unsupportedIdentifier) return "Player";
+            return n.Length > 16 ? n.Substring(0, 16) : n;
         }
 
         TMP_InputField MakeInput(Transform parent, string name, string value, float w, float h)

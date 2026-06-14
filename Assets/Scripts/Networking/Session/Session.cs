@@ -24,12 +24,14 @@ namespace JumpNowBro.Networking
         // first queued message is 1). Holding it constant lets the host dedupe repeats; it also keeps the
         // client's GOODBYE/EVENT continuing from seq 2, which the host's in-order receive buffer requires.
         const ushort HelloSeq = 1;
-        const int MaxBody = 24;                     // v1.4 Welcome body = 14 bytes; cushion for v1.5+ extensions
+        const int MaxBody = 128;                    // Welcome/Hello bodies now carry a display name; sized for the 16-char cap + headroom
 
         readonly IReliableTransport transport;
         readonly bool isHost;
         readonly Func<byte> sceneIndexProvider;     // host only — read at WELCOME-send time so it reflects current scene
         readonly Func<uint> hostTickProvider;       // host only — sampled into WELCOME body for debug / future offset estimation
+        readonly Func<string> localNameProvider;    // this player's display name, stamped into HELLO (client) / WELCOME (host)
+        readonly Func<byte> localColorProvider;     // this player's colour slot, stamped into HELLO (client) / WELCOME (host)
         readonly byte[] scratch = new byte[MaxBody];
 
         double clock;
@@ -43,19 +45,27 @@ namespace JumpNowBro.Networking
         public event Action<SessionState> OnStateChanged;
         /// Raised on the CLIENT after a valid WELCOME is parsed — carries scene index for mid-game join + peer slot confirmation.
         public event Action<Welcome> OnWelcomeReceived;
+        /// Raised on the HOST after a valid HELLO is parsed — carries the client's display name + colour (#114, #125).
+        public event Action<Hello> OnHelloReceived;
         /// Raised for message types Session doesn't itself handle (INPUT/STATE/EVENT/PING/PONG bodies).
         /// NetworkManager subscribes and routes to whichever gameplay consumer is registered.
         public event Action<MessageType, byte[]> OnGameplayMessage;
 
         public Session(IReliableTransport transport, bool isHost,
-                       Func<byte> sceneIndexProvider = null, Func<uint> hostTickProvider = null)
+                       Func<byte> sceneIndexProvider = null, Func<uint> hostTickProvider = null,
+                       Func<string> localNameProvider = null, Func<byte> localColorProvider = null)
         {
             this.transport = transport;
             this.isHost = isHost;
             this.sceneIndexProvider = sceneIndexProvider;
             this.hostTickProvider = hostTickProvider;
+            this.localNameProvider = localNameProvider;
+            this.localColorProvider = localColorProvider;
             transport.OnDisconnected += () => Disconnect(DisconnectReason.ConnectionLost);
         }
+
+        string LocalName() => localNameProvider != null ? localNameProvider() : "";
+        byte LocalColor() => localColorProvider != null ? localColorProvider() : (byte)0;
 
         public void Start()
         {
@@ -97,6 +107,7 @@ namespace JumpNowBro.Networking
                     if (State != SessionState.Connecting) break;   // already established: ignore retried/duplicate HELLOs (no second WELCOME)
                     bool ok = Hello.TryRead(payload, out var hello)
                               && hello.Magic == SessionProtocol.Magic && hello.Version == SessionProtocol.Version;
+                    if (ok) OnHelloReceived?.Invoke(hello);        // surface client name/colour before Established triggers the level load
                     SendWelcome(ok, ok ? WelcomeReason.Accepted : WelcomeReason.VersionMismatch);
                     if (ok) SetState(SessionState.Established);
                     else Disconnect(DisconnectReason.HandshakeFailed);
@@ -128,7 +139,12 @@ namespace JumpNowBro.Networking
         // nothing piles up; it is what keeps a late-starting host catching a HELLO within a probe interval.
         void SendHello(bool queued)
         {
-            int n = new Hello { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version }.Write(scratch);
+            var hello = new Hello
+            {
+                Magic = SessionProtocol.Magic, Version = SessionProtocol.Version,
+                ColorIndex = LocalColor(), Name = LocalName(),
+            };
+            int n = hello.Write(scratch);
             if (queued) transport.Send(Channel.Reliable, MessageType.Hello, scratch.AsSpan(0, n));
             else        transport.SendReliableFixedSeq(MessageType.Hello, HelloSeq, scratch.AsSpan(0, n));
         }
@@ -146,6 +162,8 @@ namespace JumpNowBro.Networking
                 PeerOwner          = InputOwner.P2,
                 CurrentSceneIndex  = sceneIndexProvider != null ? sceneIndexProvider() : (byte)0xFF,
                 HostTickAtWelcome  = hostTickProvider   != null ? hostTickProvider()   : 0u,
+                ColorIndex         = LocalColor(),
+                Name               = LocalName(),
             };
             int n = welcome.Write(scratch);
             transport.Send(Channel.Reliable, MessageType.Welcome, scratch.AsSpan(0, n));

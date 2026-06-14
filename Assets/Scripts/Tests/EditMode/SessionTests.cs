@@ -10,28 +10,31 @@ namespace JumpNowBro.Tests
         // A full reliable HELLO datagram: header(11) + message-seq(2) + body, magic/version configurable.
         static byte[] BuildHelloDatagram(uint magic, ushort version)
         {
-            var dg = new byte[PacketHeader.Size + 2 + 6];
+            var dg = new byte[PacketHeader.Size + 2 + 32];   // room for the v2 Hello body (magic+version+colour+name)
             new PacketHeader { type = MessageType.Hello, seq = 1 }.Write(dg);
             dg[PacketHeader.Size] = 0;            // message-seq hi
             dg[PacketHeader.Size + 1] = 1;        // message-seq lo
-            new Hello { Magic = magic, Version = version }.Write(dg.AsSpan(PacketHeader.Size + 2));
+            new Hello { Magic = magic, Version = version, Name = "tester" }.Write(dg.AsSpan(PacketHeader.Size + 2));
             return dg;
         }
 
         [Test]
         public void Messages_RoundTrip()
         {
-            var buf = new byte[24];
+            var buf = new byte[64];
 
-            int n = new Hello { Magic = 0xDEADBEEFu, Version = 7 }.Write(buf);
+            int n = new Hello { Magic = 0xDEADBEEFu, Version = 7, ColorIndex = 3, Name = "alice" }.Write(buf);
             Assert.IsTrue(Hello.TryRead(buf.AsSpan(0, n), out var h));
             Assert.AreEqual(0xDEADBEEFu, h.Magic);
             Assert.AreEqual(7, h.Version);
+            Assert.AreEqual(3, h.ColorIndex);
+            Assert.AreEqual("alice", h.Name);
 
             var welcomeOut = new Welcome
             {
                 Magic = 0x11223344u, Version = 9, Accepted = true, Reason = WelcomeReason.Accepted,
                 PeerOwner = InputOwner.P2, CurrentSceneIndex = 2, HostTickAtWelcome = 123_456u,
+                ColorIndex = 5, Name = "bob",
             };
             n = welcomeOut.Write(buf);
             Assert.IsTrue(Welcome.TryRead(buf.AsSpan(0, n), out var w));
@@ -41,6 +44,8 @@ namespace JumpNowBro.Tests
             Assert.AreEqual(InputOwner.P2, w.PeerOwner);
             Assert.AreEqual(2, w.CurrentSceneIndex);
             Assert.AreEqual(123_456u, w.HostTickAtWelcome);
+            Assert.AreEqual(5, w.ColorIndex);
+            Assert.AreEqual("bob", w.Name);
 
             n = new Goodbye { Reason = GoodbyeReason.Busy }.Write(buf);
             Assert.IsTrue(Goodbye.TryRead(buf.AsSpan(0, n), out var g));
@@ -51,26 +56,42 @@ namespace JumpNowBro.Tests
         public void Welcome_OutOfRangePeerOwner_Rejected()
         {
             // Manually craft a Welcome body with PeerOwner = 9 (outside the InputOwner enum range).
-            var bytes = new byte[14];
-            new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
+            var bytes = new byte[64];
+            int n = new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
             bytes[8] = 9;                                        // peerOwner byte position
-            Assert.IsFalse(Welcome.TryRead(bytes, out _));
+            Assert.IsFalse(Welcome.TryRead(bytes.AsSpan(0, n), out _));
         }
 
         [Test]
         public void Welcome_OutOfRangeReason_Rejected()
         {
             // reason byte (offset 7, after magic+version+accepted) = 99 — outside the WelcomeReason enum.
-            var bytes = new byte[14];
-            new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
+            var bytes = new byte[64];
+            int n = new Welcome { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version, Accepted = true }.Write(bytes);
             bytes[7] = 99;
-            Assert.IsFalse(Welcome.TryRead(bytes, out _));
+            Assert.IsFalse(Welcome.TryRead(bytes.AsSpan(0, n), out _));
         }
 
         [Test]
         public void Goodbye_OutOfRangeReason_Rejected()
         {
             Assert.IsFalse(Goodbye.TryRead(new byte[] { 99 }, out _));   // 99 outside the GoodbyeReason enum
+        }
+
+        [Test]
+        public void Hello_TruncatedName_Rejected()
+        {
+            // Magic(4) + Version(2) + colour(1) + a name length prefix of 10 but only 3 bytes follow → malformed.
+            uint m = SessionProtocol.Magic;
+            var bytes = new byte[]
+            {
+                (byte)(m >> 24), (byte)(m >> 16), (byte)(m >> 8), (byte)m,
+                (byte)(SessionProtocol.Version >> 8), (byte)SessionProtocol.Version,
+                0,                                  // colour index
+                0, 10,                              // name length prefix = 10
+                (byte)'a', (byte)'b', (byte)'c',    // only 3 of the claimed 10 name bytes
+            };
+            Assert.IsFalse(Hello.TryRead(bytes, out _));
         }
 
         [Test]
@@ -166,7 +187,7 @@ namespace JumpNowBro.Tests
             var host = new Session(new UdpReliableTransport(cb), isHost: true);
             host.Start();
 
-            var hello = new byte[8];
+            var hello = new byte[32];
             int n = new Hello { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version }.Write(hello);
             clientT.SendReliableFixedSeq(MessageType.Hello, 1, hello.AsSpan(0, n));
             for (int i = 0; i < 10; i++) { clientT.Tick(0.05f); host.Tick(0.05f); }
@@ -186,7 +207,7 @@ namespace JumpNowBro.Tests
             var host = new Session(new UdpReliableTransport(cb), isHost: true);
             host.Start();
 
-            var bad = new byte[8];
+            var bad = new byte[32];
             int n = new Hello { Magic = SessionProtocol.Magic, Version = (ushort)(SessionProtocol.Version + 1) }.Write(bad);
             clientT.Send(Channel.Reliable, MessageType.Hello, bad.AsSpan(0, n));
             for (int i = 0; i < 20; i++) { clientT.Tick(0.05f); host.Tick(0.05f); }
