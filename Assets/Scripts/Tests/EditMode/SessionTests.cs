@@ -130,9 +130,52 @@ namespace JumpNowBro.Tests
             var client = new Session(new UdpReliableTransport(ca), isHost: false);
 
             client.Start();
-            for (int i = 0; i < 120; i++) client.Tick(0.05f);  // 6 s > the 4 s connect-attempt timeout
+            for (int i = 0; i < 340; i++) client.Tick(0.05f);  // 17 s > the 15 s connect budget
 
             Assert.AreEqual(Session.SessionState.Disconnected, client.State);
+        }
+
+        [Test]
+        public void Client_KeepsProbing_UntilBudgetExpires()
+        {
+            // A host that comes up well after the old 4 s timeout still connects (#120). The client must
+            // still be Connecting at 6 s, then establish once the host starts listening on the same channel.
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var client = new Session(new UdpReliableTransport(ca), isHost: false);
+
+            client.Start();
+            // Host isn't up yet: drop everything it "would" have received before binding (pre-bind datagrams).
+            for (int i = 0; i < 120; i++) { client.Tick(0.05f); while (cb.TryReceive(out _)) { } }
+            Assert.AreEqual(Session.SessionState.Connecting, client.State, "client should still be probing inside the budget");
+
+            var host = new Session(new UdpReliableTransport(cb), isHost: true);
+            host.Start();
+            for (int i = 0; i < 60; i++) { client.Tick(0.05f); host.Tick(0.05f); }
+
+            Assert.AreEqual(Session.SessionState.Established, client.State);
+            Assert.AreEqual(Session.SessionState.Established, host.State);
+        }
+
+        [Test]
+        public void Host_IgnoresDuplicateHello_AfterEstablished()
+        {
+            // Once established, a stray second HELLO (e.g. a late probe) must not knock the host out of
+            // Established or re-run the handshake.
+            var (ca, cb) = InMemoryDatagramChannel.Pair();
+            var clientT = new UdpReliableTransport(ca);
+            var host = new Session(new UdpReliableTransport(cb), isHost: true);
+            host.Start();
+
+            var hello = new byte[8];
+            int n = new Hello { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version }.Write(hello);
+            clientT.SendReliableFixedSeq(MessageType.Hello, 1, hello.AsSpan(0, n));
+            for (int i = 0; i < 10; i++) { clientT.Tick(0.05f); host.Tick(0.05f); }
+            Assert.AreEqual(Session.SessionState.Established, host.State, "precondition: host established");
+
+            // A second HELLO under a different seq (so the receive buffer delivers it) must be swallowed.
+            clientT.SendReliableFixedSeq(MessageType.Hello, 2, hello.AsSpan(0, n));
+            for (int i = 0; i < 10; i++) { clientT.Tick(0.05f); host.Tick(0.05f); }
+            Assert.AreEqual(Session.SessionState.Established, host.State);
         }
 
         [Test]
@@ -213,7 +256,7 @@ namespace JumpNowBro.Tests
             var (ca, _) = InMemoryDatagramChannel.Pair();                                  // nothing on the other end
             var client = new Session(new UdpReliableTransport(ca), isHost: false);
             client.Start();
-            for (int i = 0; i < 120; i++) client.Tick(0.05f);                              // past the 4 s connect timeout
+            for (int i = 0; i < 340; i++) client.Tick(0.05f);                              // past the 15 s connect budget
             Assert.AreEqual(Session.DisconnectReason.HandshakeFailed, client.LastDisconnect);
         }
 

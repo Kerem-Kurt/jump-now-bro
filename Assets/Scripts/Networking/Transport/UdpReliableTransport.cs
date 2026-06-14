@@ -63,6 +63,12 @@ namespace JumpNowBro.Networking
             else SendFramed(type, 0, payload, NowMs());
         }
 
+        // Handshake re-probe primitive: frame and send a reliable-typed message immediately under a
+        // caller-fixed message-seq, without enqueuing it for retransmit. See IReliableTransport for why
+        // the seq must stay constant across probes (the peer's in-order receive buffer dedupes them).
+        public void SendReliableFixedSeq(MessageType type, ushort messageSeq, ReadOnlySpan<byte> payload)
+            => SendFramed(type, messageSeq, payload, NowMs());
+
         public bool TryReceive(out MessageType type, out byte[] payload)
         {
             if (inbox.Count > 0) { (type, payload) = inbox.Dequeue(); return true; }

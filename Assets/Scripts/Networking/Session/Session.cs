@@ -14,7 +14,16 @@ namespace JumpNowBro.Networking
         /// Why the session ended — read by the UI to word the disconnect and decide whether to surface it.
         public enum DisconnectReason { None, LocalLeave, PeerLeft, ConnectionLost, HandshakeFailed }
 
-        const double ConnectTimeoutSeconds = 4.0;   // the only FAST teardown for a stuck handshake (RTO exhaustion is far slower)
+        // The client re-probes HELLO at a steady cadence for the whole budget, so a host that starts late
+        // (the join-before-host case, #120) is caught by the next probe instead of the client having gone
+        // silent under the reliable queue's backoff. The budget is the only FAST teardown for a handshake
+        // that never lands; it is long enough for a human to start the host after pressing Join.
+        const double ConnectBudgetSeconds = 15.0;
+        const double HelloProbeInterval = 0.5;      // client re-sends HELLO this often while Connecting
+        // Re-probes reuse the seq the queued HELLO claimed (the reliable send-seq space starts at 1, so the
+        // first queued message is 1). Holding it constant lets the host dedupe repeats; it also keeps the
+        // client's GOODBYE/EVENT continuing from seq 2, which the host's in-order receive buffer requires.
+        const ushort HelloSeq = 1;
         const int MaxBody = 24;                     // v1.4 Welcome body = 14 bytes; cushion for v1.5+ extensions
 
         readonly IReliableTransport transport;
@@ -25,6 +34,7 @@ namespace JumpNowBro.Networking
 
         double clock;
         double connectingSince;
+        double lastHelloAt;                         // client only — clock of the last HELLO probe
 
         public SessionState State { get; private set; } = SessionState.Idle;
         public GoodbyeReason LastGoodbye { get; private set; }
@@ -50,8 +60,9 @@ namespace JumpNowBro.Networking
         public void Start()
         {
             connectingSince = clock;
+            lastHelloAt = clock;
             SetState(SessionState.Connecting);
-            if (!isHost) SendHello();                 // client speaks first; host waits for the HELLO
+            if (!isHost) SendHello(queued: true);     // client speaks first; the queued HELLO claims message-seq 1
         }
 
         public void Tick(float dt)
@@ -61,8 +72,13 @@ namespace JumpNowBro.Networking
             while (transport.TryReceive(out var type, out var payload))
                 Handle(type, payload);
 
-            if (State == SessionState.Connecting && clock - connectingSince > ConnectTimeoutSeconds)
-                Disconnect(DisconnectReason.HandshakeFailed);
+            if (State == SessionState.Connecting)
+            {
+                // Client keeps re-probing until WELCOME lands or the budget runs out (host may start late).
+                if (!isHost && clock - lastHelloAt >= HelloProbeInterval) { SendHello(queued: false); lastHelloAt = clock; }
+                if (clock - connectingSince > ConnectBudgetSeconds)
+                    Disconnect(DisconnectReason.HandshakeFailed);
+            }
         }
 
         public void SendGoodbye(GoodbyeReason reason)
@@ -78,6 +94,7 @@ namespace JumpNowBro.Networking
             switch (type)
             {
                 case MessageType.Hello when isHost:
+                    if (State != SessionState.Connecting) break;   // already established: ignore retried/duplicate HELLOs (no second WELCOME)
                     bool ok = Hello.TryRead(payload, out var hello)
                               && hello.Magic == SessionProtocol.Magic && hello.Version == SessionProtocol.Version;
                     SendWelcome(ok, ok ? WelcomeReason.Accepted : WelcomeReason.VersionMismatch);
@@ -105,10 +122,15 @@ namespace JumpNowBro.Networking
             }
         }
 
-        void SendHello()
+        // queued: the opening HELLO rides the send queue once, claiming message-seq 1 so the queue's next
+        // reliable message (GOODBYE/EVENT) is seq 2 and the host delivers it in order. The steady re-probe
+        // (queued: false) bypasses the queue under that same fixed seq, so the host dedupes the repeats and
+        // nothing piles up; it is what keeps a late-starting host catching a HELLO within a probe interval.
+        void SendHello(bool queued)
         {
             int n = new Hello { Magic = SessionProtocol.Magic, Version = SessionProtocol.Version }.Write(scratch);
-            transport.Send(Channel.Reliable, MessageType.Hello, scratch.AsSpan(0, n));
+            if (queued) transport.Send(Channel.Reliable, MessageType.Hello, scratch.AsSpan(0, n));
+            else        transport.SendReliableFixedSeq(MessageType.Hello, HelloSeq, scratch.AsSpan(0, n));
         }
 
         void SendWelcome(bool accepted, WelcomeReason reason)

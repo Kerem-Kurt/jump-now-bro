@@ -20,7 +20,7 @@ namespace JumpNowBro.Networking
         NetworkManager net;
         GameObject menu, leaveBar, lostOverlay;
         TMP_InputField ipField, lobbyField;
-        TMP_Text lostTitle, lostMsg, lostWaitLabel, pingLabel;
+        TMP_Text lostTitle, lostMsg, lostWaitLabel, pingLabel, statusBanner;
         Button lostRejoinBtn;
         float nextPingRefresh;
         readonly Button[] levelButtons = new Button[3];
@@ -55,6 +55,14 @@ namespace JumpNowBro.Networking
                                 : ms < 120 ? new Color(1f, 0.82f, 0.35f)
                                 :            new Color(1f, 0.5f, 0.4f);
             }
+
+            // Pre-game status while no level is up: the client is dialing the host (it re-probes for ~15 s, #120),
+            // or the host is listening for a peer. Keeps the blank pre-session screen from reading as a hang.
+            bool connecting = !net.ConnectionLost && net.Role == GameRole.Client && s == Session.SessionState.Connecting;
+            bool waiting    = !net.ConnectionLost && net.Role == GameRole.Hosting && s != Session.SessionState.Established;
+            bool showStatus = connecting || waiting;
+            if (statusBanner.gameObject.activeSelf != showStatus) statusBanner.gameObject.SetActive(showStatus);
+            if (showStatus) statusBanner.text = connecting ? "Connecting to host..." : "Waiting for a player to join...";
 
             bool lost = net.ConnectionLost;
             if (lostOverlay.activeSelf != lost)
@@ -174,6 +182,15 @@ namespace JumpNowBro.Networking
             pingLabel.alignment = TextAlignmentOptions.Left;
             pingLabel.gameObject.SetActive(false);
 
+            // Pre-game status banner, centered, over the empty pre-session screen (host listening / client dialing).
+            statusBanner = Label(canvasGo.transform, "", 30, FontStyles.Bold);
+            var srt = statusBanner.rectTransform;
+            srt.anchorMin = srt.anchorMax = srt.pivot = new Vector2(0.5f, 0.5f);
+            srt.anchoredPosition = new Vector2(0f, -40f);
+            srt.sizeDelta = new Vector2(640f, 44f);
+            statusBanner.color = new Color(1f, 1f, 1f, 0.85f);
+            statusBanner.gameObject.SetActive(false);
+
             BuildLostOverlay(canvasGo.transform);
         }
 
@@ -211,10 +228,13 @@ namespace JumpNowBro.Networking
         void RefreshLostOverlay()
         {
             bool host = net.Role == GameRole.Hosting;
-            lostTitle.text = host ? "Partner disconnected" : "Connection lost";
+            bool neverConnected = net.LostReason == Session.DisconnectReason.HandshakeFailed;   // client gave up dialing (#120)
+            lostTitle.text = host ? "Partner disconnected"
+                                  : (neverConnected ? "Couldn't reach host" : "Connection lost");
             lostMsg.text   = ReasonText(net.LostReason);
             lostWaitLabel.gameObject.SetActive(host);                            // host waits for the client to rejoin
             lostRejoinBtn.gameObject.SetActive(!host);                           // only the client initiates a rejoin
+            if (!host) lostRejoinBtn.GetComponentInChildren<TMP_Text>().text = neverConnected ? "Retry" : "Rejoin";
         }
 
         static string ReasonText(Session.DisconnectReason r)
