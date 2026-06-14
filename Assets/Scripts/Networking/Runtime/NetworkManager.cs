@@ -275,12 +275,17 @@ namespace JumpNowBro.Networking
             else if (Role == GameRole.Client) WireClient(instance);
         }
 
+        // Networked play points the local keyboard at one shared layout (#117) so both players use the same
+        // keys on their own machine; the split Player1/Player2 maps are only for solo single-keyboard play.
+        const string NetPlayerMap = "NetPlayer";
+
         void WireHosting(GameObject instance)
         {
             var ctrl  = instance.GetComponent<PlayerController>();
             var keyP1 = instance.GetComponent<KeyboardInputSource_P1>();
             var keyP2 = instance.GetComponent<KeyboardInputSource_P2>();
             if (keyP2 != null) Destroy(keyP2);                            // host's P2 input comes over the wire
+            if (keyP1 != null) keyP1.Rebind(NetPlayerMap);               // host drives P1 with the shared layout
 
             currentHostRemote = instance.AddComponent<NetworkRemoteInputSource>();
             if (ctrl != null)
@@ -312,6 +317,7 @@ namespace JumpNowBro.Networking
 
             // Client = P2 by convention; sampler reads the local P2 keyboard.
             var keyP2 = instance.GetComponent<KeyboardInputSource_P2>();
+            if (keyP2 != null) keyP2.Rebind(NetPlayerMap);               // client drives P2 with the shared layout
 
             var sender = instance.AddComponent<ClientInputSender>();
             sender.Bind(keyP2, transport, TickClock.Instance);

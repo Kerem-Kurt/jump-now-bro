@@ -58,14 +58,20 @@ flowchart LR
     STEP -.->|"same symbol"| CLIENT["Client predictor replay"]
 ```
 
-In **LAN play the host drives Player 1 and the client drives Player 2**, each on their own keyboard.
-**Solo on one machine**, you drive both halves yourself.
+In **LAN play the host drives Player 1 and the client drives Player 2**, each on their own keyboard, and
+both use the **same** layout (move with WASD or the arrows, jump with Space, dash with either Shift), so
+neither has to learn an off-hand mapping. **Solo on one machine**, you drive both halves yourself on a
+split keyboard.
+
+**Solo (one keyboard, split halves):**
 
 | Action | Player 1 | Player 2 |
 |---|---|---|
 | Move (left/right) | A / D | ← / → |
 | Jump | Left Shift | Space |
 | Dash | Left Ctrl | Right Shift |
+
+**LAN (each player on their own keyboard):** Move = WASD or arrows, Jump = Space, Dash = Left or Right Shift.
 
 ## How it's built (at a glance)
 

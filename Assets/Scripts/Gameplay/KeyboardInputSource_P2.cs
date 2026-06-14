@@ -22,9 +22,19 @@ namespace JumpNowBro.Gameplay
         public bool JumpHeld    => jumpAction != null && jumpAction.IsPressed();
         public bool DashPressed => dashPressedFlag;
 
-        void OnEnable()
+        void OnEnable() => Bind("Player2");
+
+        void OnDisable() => Unbind();
+
+        /// Switch to a different action map at runtime. Networked play points the local source at the shared
+        /// "NetPlayer" layout so both players use the same keys; solo leaves the split Player1/Player2 maps.
+        /// Safe after OnEnable: it tears the current map down first.
+        public void Rebind(string mapName) => Bind(mapName);
+
+        void Bind(string mapName)
         {
-            map = actions.FindActionMap("Player2", throwIfNotFound: true);
+            Unbind();
+            map = actions.FindActionMap(mapName, throwIfNotFound: true);
             moveAction = map.FindAction("Move", throwIfNotFound: true);
             jumpAction = map.FindAction("Jump", throwIfNotFound: true);
             dashAction = map.FindAction("Dash", throwIfNotFound: true);
@@ -34,7 +44,7 @@ namespace JumpNowBro.Gameplay
             dashAction.performed += OnDashPerformed;
         }
 
-        void OnDisable()
+        void Unbind()
         {
             if (jumpAction != null) jumpAction.performed -= OnJumpPerformed;
             if (dashAction != null) dashAction.performed -= OnDashPerformed;
