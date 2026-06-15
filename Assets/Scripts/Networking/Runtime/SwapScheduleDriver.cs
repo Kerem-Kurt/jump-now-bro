@@ -70,12 +70,26 @@ namespace JumpNowBro.Networking
                     var old = store.Current;
                     store.Apply(due[i].Map);
                     var ch = SwapDiff.FirstChange(old, due[i].Map);
-                    if (ch != null)
-                        GameHudOverlay.Instance?.Announce(ch.Value.action, ch.Value.newOwner);
+                    if (ch != null) RaiseSwapCues(ch.Value.action, ch.Value.newOwner);
                 }
                 SwapTrigger.GreyById(due[i].TriggerId);
                 AudioManager.Instance?.PlaySwap();           // sting on both ends, at the shared apply tick (#42)
             }
+        }
+
+        // Swap cues fired at the shared apply tick on whichever end is running this. Announcement (#115) is the
+        // same on both screens; the edge flash (#126) is local and only on a GAIN: the player this screen drives
+        // just received the action. Losing it shows nothing (a dim pulse there read as confusing). Solo has no
+        // single local player, so every swap is a gain for the new owner.
+        void RaiseSwapCues(PlayerAction action, InputOwner newOwner)
+        {
+            var overlay = GameHudOverlay.Instance;
+            if (overlay == null) return;
+            overlay.Announce(action, newOwner);
+
+            var role = NetworkManager.Instance != null ? NetworkManager.Instance.Role : GameRole.SinglePlayer;
+            if (role == GameRole.SinglePlayer || newOwner == (role == GameRole.Hosting ? InputOwner.P1 : InputOwner.P2))
+                overlay.Flash(action);   // solo: always; networked: only when this screen's player gains it
         }
 
         // Host/solo only (the client gates out in SwapTrigger). Compose onto the pending-final map so two

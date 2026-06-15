@@ -26,6 +26,12 @@ namespace JumpNowBro.Gameplay
         CanvasGroup announceGroup;
         Coroutine announceRoutine;
 
+        // #126 edge flash
+        CanvasGroup flashGroup;
+        Image flashLeftCore, flashRightCore;
+        Coroutine flashRoutine;
+        static Sprite edgeGradientL, edgeGradientR;
+
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -33,6 +39,7 @@ namespace JumpNowBro.Gameplay
             DontDestroyOnLoad(gameObject);
             BuildCanvas();
             BuildAnnouncement();
+            BuildEdgeFlash();
         }
 
         void OnDestroy() { if (Instance == this) Instance = null; }
@@ -130,6 +137,98 @@ namespace JumpNowBro.Gameplay
             mat.SetFloat("_UnderlayOffsetY", -0.5f);
             mat.SetFloat("_UnderlayDilate", 0.1f);
             mat.SetFloat("_UnderlaySoftness", 0.25f);
+        }
+
+        // ---- #126 edge flash --------------------------------------------------------------------------
+
+        void BuildEdgeFlash()
+        {
+            var root = new GameObject("EdgeFlash", typeof(RectTransform));
+            root.transform.SetParent(transform, false);
+            var rrt = root.GetComponent<RectTransform>();
+            rrt.anchorMin = Vector2.zero;
+            rrt.anchorMax = Vector2.one;
+            rrt.offsetMin = rrt.offsetMax = Vector2.zero;
+            flashGroup = root.AddComponent<CanvasGroup>();
+            flashGroup.alpha = 0f;
+            flashGroup.blocksRaycasts = false;
+            flashGroup.interactable = false;
+
+            // Left+right only (#126), in the action's colour. The flash only ever shows on the screen of the
+            // player the change affects, so the action colour alone identifies it; no player-colour rim needed.
+            flashLeftCore  = MakeEdgeStrip(root.transform, leftSide: true,  width: 200f);
+            flashRightCore = MakeEdgeStrip(root.transform, leftSide: false, width: 200f);
+        }
+
+        // A side-anchored full-height strip using the edge-gradient sprite (opaque at the screen edge, fading inward).
+        static Image MakeEdgeStrip(Transform parent, bool leftSide, float width)
+        {
+            var go = new GameObject(leftSide ? "EdgeStripL" : "EdgeStripR", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var img = go.GetComponent<Image>();
+            img.sprite = EdgeGradientSprite(opaqueAtLeft: leftSide);   // opaque side hugs this screen edge
+            img.raycastTarget = false;
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(leftSide ? 0f : 1f, 0f);
+            rt.anchorMax = new Vector2(leftSide ? 0f : 1f, 1f);
+            rt.pivot = new Vector2(leftSide ? 0f : 1f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(width, 0f);                 // full height (top/bottom anchored), fixed width
+            return img;
+        }
+
+        // White horizontal alpha ramp: opaque at one edge, transparent inward, eased for a soft glow. Cached per side
+        // (the right side needs a genuinely mirrored sprite, not a transform flip, or its rect lands off-screen).
+        static Sprite EdgeGradientSprite(bool opaqueAtLeft)
+        {
+            if (opaqueAtLeft && edgeGradientL != null) return edgeGradientL;
+            if (!opaqueAtLeft && edgeGradientR != null) return edgeGradientR;
+
+            const int w = 64, h = 4;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            var px = new Color[w * h];
+            for (int x = 0; x < w; x++)
+            {
+                float t = (float)x / (w - 1);
+                float a = opaqueAtLeft ? 1f - t : t;
+                a *= a;                                              // ease the falloff
+                for (int y = 0; y < h; y++) px[y * w + x] = new Color(1f, 1f, 1f, a);
+            }
+            tex.SetPixels(px);
+            tex.Apply();
+            var sprite = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 100f);
+            if (opaqueAtLeft) edgeGradientL = sprite; else edgeGradientR = sprite;
+            return sprite;
+        }
+
+        /// Single bright pulse on the side edges in the action's colour. Only fired when THIS screen's player
+        /// gains the action (#126); losing an action shows nothing.
+        public void Flash(PlayerAction action)
+        {
+            if (flashGroup == null) return;
+            flashLeftCore.color = flashRightCore.color = ActionStyle.ColorOf(action);
+            if (flashRoutine != null) StopCoroutine(flashRoutine);
+            flashRoutine = StartCoroutine(FlashRoutine());
+        }
+
+        IEnumerator FlashRoutine()
+        {
+            const float peak = 0.85f, inT = 0.12f, outT = 0.30f;
+            for (float t = 0f; t < inT; t += Time.unscaledDeltaTime)
+            {
+                float k = t / inT;
+                flashGroup.alpha = Mathf.Lerp(0f, peak, 1f - (1f - k) * (1f - k));   // ease-out in
+                yield return null;
+            }
+            flashGroup.alpha = peak;
+            for (float t = 0f; t < outT; t += Time.unscaledDeltaTime)
+            {
+                float k = t / outT;
+                flashGroup.alpha = Mathf.Lerp(peak, 0f, k);
+                yield return null;
+            }
+            flashGroup.alpha = 0f;
+            flashRoutine = null;
         }
     }
 }
