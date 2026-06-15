@@ -727,6 +727,7 @@ GameObject:
   - component: {fileID: 1565270713}
   - component: {fileID: 1565270714}
   - component: {fileID: 1740463341}
+  - component: {fileID: 1740463342}
   m_Layer: 0
   m_Name: Manager
   m_TagString: Untagged
@@ -1154,6 +1155,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1714183151}
   m_CullTransparentMesh: 1
+--- !u!114 &1740463341
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1565270703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4c374d4e2794c06aedd6608bbae498e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1740463342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1565270703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0374161d32764831bd6e5d9cc58b7c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.AudioManager
+  jumpClip: {fileID: 0}
+  landClip: {fileID: 0}
+  dashClip: {fileID: 0}
+  swapClip: {fileID: 0}
+  sfxVolume: 0.8
+  musicClip: {fileID: 8300000, guid: 5993d8bc27b1e4c74b7e68f2df2c4f78, type: 3}
+  musicVolume: 0.5
 --- !u!1 &1749383757
 GameObject:
   m_ObjectHideFlags: 0
@@ -1624,15 +1656,3 @@ SceneRoots:
   - {fileID: 1565270706}
   - {fileID: 2067731828}
   - {fileID: 1749383760}
---- !u!114 &1740463341
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1565270703}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4c374d4e2794c06aedd6608bbae498e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 

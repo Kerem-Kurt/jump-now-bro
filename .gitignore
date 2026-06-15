@@ -82,3 +82,8 @@ ci/obj/
 
 # Test Runner exports
 TestResults*.xml
+
+# Licensed music kept local-only — the repo ships the silent placeholder Assets/Audio/Music/music_loop.mp3.
+# See Assets/Audio/Music/README.md. Overwrite the placeholder to use a real track locally; keep real tracks out of git.
+/Assets/Audio/Music/Synesthetic Quasar.mp3
+/Assets/Audio/Music/Synesthetic Quasar.mp3.meta

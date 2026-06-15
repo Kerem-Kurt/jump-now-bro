@@ -27,12 +27,18 @@ namespace JumpNowBro.Gameplay
 
         void OnEnable()
         {
-            if (controller != null) controller.OnDash += HandleDash;
+            if (controller == null) return;          // client destroys PlayerController; it drives juice via the Play* calls below
+            controller.OnDash += HandleDash;
+            controller.OnJump += HandleJump;
+            controller.OnLand += HandleLand;
         }
 
         void OnDisable()
         {
-            if (controller != null) controller.OnDash -= HandleDash;
+            if (controller == null) return;
+            controller.OnDash -= HandleDash;
+            controller.OnJump -= HandleJump;
+            controller.OnLand -= HandleLand;
         }
 
         void ConfigureTrail()
@@ -86,18 +92,24 @@ namespace JumpNowBro.Gameplay
             burst.Play();
         }
 
-        /// Client entry point: the ClientPredictor drives this from predicted EdgeFlags, since the client
-        /// destroys PlayerController and the OnDash subscription above never fires there. Host stays on OnDash.
+        /// Client entry points: ClientStateRenderer drives these from STATE MoveState transitions, since the
+        /// client destroys PlayerController and the host-event subscriptions above never fire there.
         public void PlayDash() => HandleDash();
+        public void PlayJump() => HandleJump();
+        public void PlayLand() => HandleLand();
 
         void HandleDash()
         {
+            AudioManager.Instance?.PlayDash();
             trail.Clear();
             trail.emitting = true;
             if (burst != null) burst.Emit(dashBurstCount);
             StopAllCoroutines();
             StartCoroutine(StopTrailAfter(trailHoldTime));
         }
+
+        void HandleJump() => AudioManager.Instance?.PlayJump();   // #118 adds the squash visual here
+        void HandleLand() => AudioManager.Instance?.PlayLand();
 
         IEnumerator StopTrailAfter(float t)
         {

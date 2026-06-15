@@ -32,6 +32,8 @@ namespace JumpNowBro.Gameplay
 
         public event System.Action<int> OnDeath;
         public event System.Action OnDash;
+        public event System.Action OnJump;   // takeoff edge — drives jump juice (#42 SFX, #118 squash)
+        public event System.Action OnLand;   // touchdown edge — drives the land thud (#42)
         /// Fired at end of FixedUpdate (after MovePosition) with (hostTick, post-step state) so the v1.4
         /// NetworkStateBroadcaster can sample at the exact moment authoritative state is settled.
         public event System.Action<uint, MovementState> OnSimStepCompleted;
@@ -139,6 +141,8 @@ namespace JumpNowBro.Gameplay
                 return;
             }
             if ((edges & EdgeFlags.DashedThisTick) != 0) OnDash?.Invoke();
+            if ((edges & EdgeFlags.JumpedThisTick) != 0) OnJump?.Invoke();
+            if ((edges & EdgeFlags.LandedThisTick) != 0) OnLand?.Invoke();
 
             currentState = newState;
             rb.MovePosition(new Vector2(newState.posX, newState.posY));              // Kinematic body — MovePosition is the only mover. The earlier "also set

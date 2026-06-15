@@ -65,6 +65,7 @@ namespace JumpNowBro.Networking
             {
                 ControlMapStore.Instance?.Apply(due[i].Map);
                 SwapTrigger.GreyById(due[i].TriggerId);
+                AudioManager.Instance?.PlaySwap();           // sting on both ends, at the shared apply tick (#42)
             }
         }
 

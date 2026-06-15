@@ -49,8 +49,13 @@ namespace JumpNowBro.Networking
             // every dash regardless of owner — unlike the predictor's EdgeFlags, which only fire for
             // client-owned actions (host-owned dash edges are stripped by DeadReckonHost). Edge, not
             // occupancy, so a multi-tick dash fires once. The host drives the same juice via PlayerController.OnDash.
-            if (effects != null && body.movementState.state == MoveState.Dashing && lastState != MoveState.Dashing)
-                effects.PlayDash();
+            if (effects != null)
+            {
+                var st = body.movementState.state;                          // MoveState transitions drive juice for every owner
+                if (st == MoveState.Dashing  && lastState != MoveState.Dashing)  effects.PlayDash();
+                if (st == MoveState.Jumping  && lastState != MoveState.Jumping)  effects.PlayJump();
+                if (st == MoveState.Grounded && lastState != MoveState.Grounded) effects.PlayLand();
+            }
             lastState = body.movementState.state;
 
             CurrentState           = body.movementState;
