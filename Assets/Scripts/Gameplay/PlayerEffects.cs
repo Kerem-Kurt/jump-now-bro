@@ -14,13 +14,27 @@ namespace JumpNowBro.Gameplay
         [SerializeField] Color dashColor = new Color(0.5f, 0.9f, 1f, 1f);
         [SerializeField] int dashBurstCount = 14;
 
+        [Header("Squash & stretch (#118)")]
+        [SerializeField] Vector2 jumpStretch = new Vector2(0.82f, 1.18f);   // takeoff: thin + tall
+        [SerializeField] Vector2 landSquash  = new Vector2(1.25f, 0.75f);   // touchdown: wide + flat
+        [SerializeField] Vector2 dashStretch = new Vector2(1.30f, 0.78f);   // dash: stretched along travel
+        [SerializeField] float jumpSquashTime = 0.13f;
+        [SerializeField] float landSquashTime = 0.18f;
+        [SerializeField] float dashSquashTime = 0.16f;
+
         PlayerController controller;
         TrailRenderer trail;
         ParticleSystem burst;
+        Transform visual;                 // render-only sprite child (#107); squash scales this, never the root collider
+        Vector3 visualBaseScale = Vector3.one;
+        Coroutine squashRoutine;
+        Coroutine trailRoutine;
 
         void Awake()
         {
             controller = GetComponent<PlayerController>();
+            visual = transform.Find("Visual");
+            if (visual != null) visualBaseScale = visual.localScale;
             ConfigureTrail();
             ConfigureBurst();
         }
@@ -101,15 +115,39 @@ namespace JumpNowBro.Gameplay
         void HandleDash()
         {
             AudioManager.Instance?.PlayDash();
+            Squash(dashStretch, dashSquashTime);
             trail.Clear();
             trail.emitting = true;
             if (burst != null) burst.Emit(dashBurstCount);
-            StopAllCoroutines();
-            StartCoroutine(StopTrailAfter(trailHoldTime));
+            if (trailRoutine != null) StopCoroutine(trailRoutine);
+            trailRoutine = StartCoroutine(StopTrailAfter(trailHoldTime));
         }
 
-        void HandleJump() => AudioManager.Instance?.PlayJump();   // #118 adds the squash visual here
-        void HandleLand() => AudioManager.Instance?.PlayLand();
+        void HandleJump() { AudioManager.Instance?.PlayJump(); Squash(jumpStretch, jumpSquashTime); }
+        void HandleLand() { AudioManager.Instance?.PlayLand(); Squash(landSquash, landSquashTime); }
+
+        // Squash-and-stretch on the sprite child: snap to base*mult, then ease back to base. Render-only
+        // (collider + sim live on the root), so it never touches gameplay; fires on host and client alike.
+        void Squash(Vector2 mult, float duration)
+        {
+            if (visual == null) return;
+            if (squashRoutine != null) StopCoroutine(squashRoutine);
+            squashRoutine = StartCoroutine(SquashRoutine(mult, duration));
+        }
+
+        IEnumerator SquashRoutine(Vector2 mult, float duration)
+        {
+            var from = new Vector3(visualBaseScale.x * mult.x, visualBaseScale.y * mult.y, visualBaseScale.z);
+            for (float t = 0f; t < duration; t += Time.deltaTime)
+            {
+                float k = t / duration;
+                float ease = 1f - (1f - k) * (1f - k);     // ease-out: snap to the extreme, settle into base
+                visual.localScale = Vector3.Lerp(from, visualBaseScale, ease);
+                yield return null;
+            }
+            visual.localScale = visualBaseScale;
+            squashRoutine = null;
+        }
 
         IEnumerator StopTrailAfter(float t)
         {
