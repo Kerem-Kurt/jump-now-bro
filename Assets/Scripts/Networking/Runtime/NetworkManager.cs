@@ -308,6 +308,11 @@ namespace JumpNowBro.Networking
             // dynamically so a client-rejoin (new transport, same host Player) auto-picks up the new endpoint.
             bcast.Bind(ControlMapStore.Instance, LevelManager.Instance,
                        () => currentHostRemote != null ? currentHostRemote.LastConsumedClientTick : 0u);
+
+            // #124 intent: host reads P1 from its local keyboard, P2 from the client's decoded input.
+            GhostIntentSources.Register(
+                () => GhostIntentSources.From(keyP1),
+                () => GhostIntentSources.From(currentHostRemote));
         }
 
         void WireClient(GameObject instance)
@@ -338,6 +343,11 @@ namespace JumpNowBro.Networking
             predictor.Bind(sender, currentClientRenderer, TickClock.Instance, ControlMapStore.Instance,
                            rb, collisionConfig != null ? collisionConfig.CreateWorld(rb) : null,
                            tuning, fallLimitY, visualChild);
+
+            // #124 intent: client reads P1 from the host's STATE frame, P2 from its local keyboard.
+            GhostIntentSources.Register(
+                () => currentClientRenderer != null ? GhostIntentSources.From(currentClientRenderer.LastRemoteHostFrame) : default,
+                () => GhostIntentSources.From(keyP2));
         }
 
         // Route a decoded EVENT by (role, kind). The reliable EVENT stream is shared by both directions, so each
@@ -575,6 +585,7 @@ namespace JumpNowBro.Networking
             FindAnyObjectByType<LevelHud>()?.Clear();
             DeathNotifier.Instance?.Reset();
             PlayerIdentity.Reset();                                            // next session starts from the P1/P2 defaults
+            GhostIntentSources.Reset();                                        // drop intent sources closing over the destroyed player (#124)
 
             session = null;
             transport = null;
