@@ -21,6 +21,7 @@ namespace JumpNowBro.Gameplay
             {
                 summaryLabel.textWrappingMode = TextWrappingModes.NoWrap;
                 summaryLabel.alignment = TextAlignmentOptions.Center;
+                if (TMP_Settings.defaultFontAsset != null) summaryLabel.font = TMP_Settings.defaultFontAsset;   // follow TMP default (Inter)
             }
             // Subscribe in Start so LevelManager.Awake has already run; the completion
             // event is many levels away, so there's no race with early loads.

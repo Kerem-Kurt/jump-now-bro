@@ -52,6 +52,7 @@ namespace JumpNowBro.Gameplay
             t.fontStyle = FontStyles.Bold;
             t.color = Color.white;
             t.alignment = TextAlignmentOptions.Center;
+            if (TMP_Settings.defaultFontAsset != null) t.font = TMP_Settings.defaultFontAsset;   // follow the TMP default (Inter) despite the serialized font
         }
 
         // A dark semi-transparent strip behind the three labels so they stay readable over the level.
@@ -72,11 +73,11 @@ namespace JumpNowBro.Gameplay
 
         void UpdateLabels(ControlMap map)
         {
-            // action name in its fixed colour (the "what"); owner name in that player's colour (the "who")
+            // action name in its fixed colour (the "what", via ActionStyle); owner name in that player's colour (the "who")
             currentMap = map;
-            if (moveLabel != null) moveLabel.text = $"<color=#73E68C>MOVE</color>  {Owner(map.moveOwner)}";
-            if (jumpLabel != null) jumpLabel.text = $"<color=#FFB840>JUMP</color>  {Owner(map.jumpOwner)}";
-            if (dashLabel != null) dashLabel.text = $"<color=#73CCFF>DASH</color>  {Owner(map.dashOwner)}";
+            if (moveLabel != null) moveLabel.text = $"{ActionStyle.RichLabel(PlayerAction.MoveHorizontal)}  {Owner(map.moveOwner)}";
+            if (jumpLabel != null) jumpLabel.text = $"{ActionStyle.RichLabel(PlayerAction.Jump)}  {Owner(map.jumpOwner)}";
+            if (dashLabel != null) dashLabel.text = $"{ActionStyle.RichLabel(PlayerAction.Dash)}  {Owner(map.dashOwner)}";
         }
 
         static string Owner(InputOwner o)

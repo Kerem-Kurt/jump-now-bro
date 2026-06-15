@@ -24,6 +24,7 @@ namespace JumpNowBro.Gameplay
                 deathLabel.fontStyle = FontStyles.Bold;
                 deathLabel.color = new Color(1f, 0.82f, 0.82f);
                 deathLabel.alignment = TextAlignmentOptions.Right;
+                FollowDefaultFont(deathLabel);
             }
             if (levelLabel != null)
             {
@@ -36,7 +37,14 @@ namespace JumpNowBro.Gameplay
                 levelLabel.fontStyle = FontStyles.Bold;
                 levelLabel.color = new Color(0.78f, 0.85f, 1f);
                 levelLabel.alignment = TextAlignmentOptions.Left;
+                FollowDefaultFont(levelLabel);
             }
+        }
+
+        // The serialized labels carry an explicit font; repoint them at the TMP default (Inter) so the whole UI is one font.
+        static void FollowDefaultFont(TMP_Text t)
+        {
+            if (t != null && TMP_Settings.defaultFontAsset != null) t.font = TMP_Settings.defaultFontAsset;
         }
 
         void OnEnable()

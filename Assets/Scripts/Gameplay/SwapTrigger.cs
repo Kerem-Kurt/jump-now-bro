@@ -150,13 +150,7 @@ namespace JumpNowBro.Gameplay
 
         static Color ColorFor(PlayerAction action, float alpha)
         {
-            Color c = action switch
-            {
-                PlayerAction.MoveHorizontal => new Color(0.4f, 0.9f, 0.5f),
-                PlayerAction.Jump => new Color(1f, 0.7f, 0.2f),
-                PlayerAction.Dash => new Color(0.4f, 0.8f, 1f),
-                _ => Color.white
-            };
+            Color c = ActionStyle.ColorOf(action);   // single source of action colour (shared with HUD + announcement)
             c.a = alpha;
             return c;
         }
