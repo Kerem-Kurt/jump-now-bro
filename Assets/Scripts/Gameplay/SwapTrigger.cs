@@ -32,17 +32,50 @@ namespace JumpNowBro.Gameplay
         [SerializeField] Color firedColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
         [SerializeField] int bannerSortingOrder = 1;
 
+        // #127 proximity pulse: nudge a gentle screen pulse when the character is within a few body-lengths of an
+        // ARMED trigger (no in-world text; the pulse + the at-swap announcement carry the message).
+        const float ProximityFar = 4.5f;   // units (~a few body-lengths): pulse begins, faint
+        const float ProximityNear = 1.0f;  // units: pulse at full (still gentle) strength
+
         bool fired;
         bool firedAtCheckpoint;
+        bool bannerArmed;
         SpriteRenderer banner;
+        Collider2D col;
+        static Transform cachedPlayer;     // the one rendered character (host or client); re-resolved if destroyed
 
         void OnEnable() => active.Add(this);
         void OnDisable() => active.Remove(this);
 
         void Start()
         {
+            col = GetComponent<Collider2D>();
             if (showBanner) AcquireBanner();
             SetBannerArmed(!fired);
+        }
+
+        /// Nudge a gentle screen pulse while ARMED and the character is within a few body-lengths. Gated on the
+        /// banner's armed state (not `fired`): the host marks `fired` on entry, but the banner stays armed until
+        /// GreyById at the apply tick, so host + client pulse alike through the lead window and stop together.
+        /// The in-world banner keeps its static armed look; the only cue is the screen pulse (+ the at-swap
+        /// announcement). No in-world text (#127, revised).
+        void Update()
+        {
+            if (!bannerArmed || col == null) return;
+            var player = LocalPlayer();
+            if (player == null) return;
+            float t = Mathf.InverseLerp(ProximityFar, ProximityNear, Vector2.Distance(player.position, (Vector2)col.bounds.center));
+            if (t > 0.001f) GameHudOverlay.Instance?.ReportProximity(t, actionToSwap);
+        }
+
+        static Transform LocalPlayer()
+        {
+            if (cachedPlayer == null)
+            {
+                var go = GameObject.FindWithTag("Player");
+                if (go != null) cachedPlayer = go.transform;
+            }
+            return cachedPlayer;
         }
 
         // Checkpoint locks in which triggers have fired up to this point.
@@ -144,6 +177,7 @@ namespace JumpNowBro.Gameplay
 
         void SetBannerArmed(bool armed)
         {
+            bannerArmed = armed;                 // gates the #127 telegraph; Update drives the colour while armed
             if (banner == null) return;
             banner.color = armed ? ColorFor(actionToSwap, armedAlpha) : firedColor;
         }

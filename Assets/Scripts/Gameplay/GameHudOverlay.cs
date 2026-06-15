@@ -32,6 +32,14 @@ namespace JumpNowBro.Gameplay
         Coroutine flashRoutine;
         static Sprite edgeGradientL, edgeGradientR;
 
+        // #127 proximity pulse (a gentle screen vignette in the upcoming action's colour when very near an armed trigger)
+        CanvasGroup proximityGroup;
+        Image proximityImage;
+        static Sprite vignetteSprite;
+        float proximityBestT;
+        bool proximityReported;
+        const float ProximityMaxAlpha = 0.4f;
+
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -40,9 +48,20 @@ namespace JumpNowBro.Gameplay
             BuildCanvas();
             BuildAnnouncement();
             BuildEdgeFlash();
+            BuildProximity();
         }
 
         void OnDestroy() { if (Instance == this) Instance = null; }
+
+        // Drive the proximity vignette from the nearest armed trigger that reported this frame: brightness scales
+        // with closeness (fades in as the character nears, out as it leaves), no pulsing. Zero when none report.
+        void LateUpdate()
+        {
+            if (proximityGroup == null) return;
+            proximityGroup.alpha = proximityReported ? proximityBestT * ProximityMaxAlpha : 0f;
+            proximityReported = false;
+            proximityBestT = 0f;
+        }
 
         void BuildCanvas()
         {
@@ -229,6 +248,61 @@ namespace JumpNowBro.Gameplay
             }
             flashGroup.alpha = 0f;
             flashRoutine = null;
+        }
+
+        // ---- #127 proximity pulse ---------------------------------------------------------------------
+
+        void BuildProximity()
+        {
+            var go = new GameObject("SwapProximity", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(transform, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;        // full screen
+            proximityImage = go.GetComponent<Image>();
+            proximityImage.sprite = VignetteSprite();
+            proximityImage.raycastTarget = false;
+            proximityGroup = go.AddComponent<CanvasGroup>();
+            proximityGroup.alpha = 0f;
+            proximityGroup.blocksRaycasts = false;
+            proximityGroup.interactable = false;
+        }
+
+        /// An armed SwapTrigger within a few body-lengths reports itself each frame: how close (t: 0 at the outer
+        /// edge -> 1 very near) and which action is about to swap. The nearest reporter wins; LateUpdate drives a
+        /// gentle breathing vignette in that action's colour, fading out when none report. No text (#127, revised).
+        public void ReportProximity(float t, PlayerAction action)
+        {
+            if (proximityImage == null) return;
+            if (proximityReported && t <= proximityBestT) return;
+            proximityReported = true;
+            proximityBestT = Mathf.Clamp01(t);
+            proximityImage.color = ActionStyle.ColorOf(action);
+        }
+
+        // Soft radial vignette: transparent centre, colour ramping in toward the screen edges/corners.
+        static Sprite VignetteSprite()
+        {
+            if (vignetteSprite == null)
+            {
+                const int n = 128;
+                var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+                var px = new Color[n * n];
+                Vector2 c = new Vector2((n - 1) * 0.5f, (n - 1) * 0.5f);
+                float maxD = c.magnitude;
+                for (int y = 0; y < n; y++)
+                    for (int x = 0; x < n; x++)
+                    {
+                        float d = Vector2.Distance(new Vector2(x, y), c) / maxD;     // 0 centre -> 1 corner
+                        float a = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 1f, d));
+                        px[y * n + x] = new Color(1f, 1f, 1f, a);
+                    }
+                tex.SetPixels(px);
+                tex.Apply();
+                vignetteSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+            }
+            return vignetteSprite;
         }
     }
 }
