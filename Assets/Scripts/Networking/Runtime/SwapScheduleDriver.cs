@@ -63,7 +63,16 @@ namespace JumpNowBro.Networking
             var due = Scheduler.OnTick(CurrentApplyClock);
             for (int i = 0; i < due.Count; i++)
             {
-                ControlMapStore.Instance?.Apply(due[i].Map);
+                // Diff old->new for the announcement (#115) + flash (#126); keep grey/sting unconditional.
+                var store = ControlMapStore.Instance;
+                if (store != null)
+                {
+                    var old = store.Current;
+                    store.Apply(due[i].Map);
+                    var ch = SwapDiff.FirstChange(old, due[i].Map);
+                    if (ch != null)
+                        GameHudOverlay.Instance?.Announce(ch.Value.action, ch.Value.newOwner);
+                }
                 SwapTrigger.GreyById(due[i].TriggerId);
                 AudioManager.Instance?.PlaySwap();           // sting on both ends, at the shared apply tick (#42)
             }
