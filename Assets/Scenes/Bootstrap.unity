@@ -1179,13 +1179,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0374161d32764831bd6e5d9cc58b7c4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: JumpNowBro.Gameplay::JumpNowBro.Gameplay.AudioManager
-  jumpClip: {fileID: 0}
-  landClip: {fileID: 0}
-  dashClip: {fileID: 0}
-  swapClip: {fileID: 0}
-  sfxVolume: 0.8
+  mixer: {fileID: 24100000, guid: aabd4cb3d1d12471fadc19287a1a9436, type: 2}
+  musicGroup: {fileID: 471440100009815101, guid: aabd4cb3d1d12471fadc19287a1a9436, type: 2}
+  sfxGroup: {fileID: 6867986158080959143, guid: aabd4cb3d1d12471fadc19287a1a9436, type: 2}
+  jumpClip: {fileID: 8300000, guid: 69aa548ebb693480490a5e5e7892d735, type: 3}
+  landClip: {fileID: 8300000, guid: 770740854956e45e79fd0eacef08adc3, type: 3}
+  dashClip: {fileID: 8300000, guid: c779a273d9b454414911cbbe5d6c3b1d, type: 3}
+  swapClip: {fileID: 8300000, guid: 49070454aafa94abd92010b1f8da9e94, type: 3}
   musicClip: {fileID: 8300000, guid: 5993d8bc27b1e4c74b7e68f2df2c4f78, type: 3}
+  masterVolume: 1
   musicVolume: 0.5
+  sfxVolume: 0.8
 --- !u!1 &1749383757
 GameObject:
   m_ObjectHideFlags: 0
